@@ -11,6 +11,7 @@
   const fileEl = $("#file");
   const playBtn = $("#play");
   const micBtn = $("#mic");
+  const tabBtn = $("#tab");
 
   const hudMode = $("#hudMode");
   const hudSrc = $("#hudSrc");
@@ -27,6 +28,7 @@
   let analyser = null;
   let srcNode = null;
   let micStream = null;
+  let tabStream = null;
 
   // buffers
   let timeBuf = null;
@@ -93,6 +95,12 @@
   function disconnectSource() {
     if (srcNode) {
       try { srcNode.disconnect(); } catch {}
+
+  function stopStream(st) {
+    if (!st) return null;
+    try { st.getTracks().forEach(t => t.stop()); } catch {}
+    return null;
+  }
       srcNode = null;
     }
   }
@@ -107,9 +115,12 @@
     await resumeAudio();
 
     if (micStream) {
-      micStream.getTracks().forEach(t => t.stop());
-      micStream = null;
+      micStream = stopStream(micStream);
       micBtn.classList.remove("on");
+    }
+    if (tabStream) {
+      tabStream = stopStream(tabStream);
+      tabBtn?.classList.remove("on");
     }
     disconnectSource();
 
@@ -133,11 +144,15 @@
     disconnectSource();
 
     if (micStream) {
-      micStream.getTracks().forEach(t => t.stop());
-      micStream = null;
+      micStream = stopStream(micStream);
       micBtn.classList.remove("on");
       hudSrc.textContent = "—";
       return;
+    }
+
+    if (tabStream) {
+      tabStream = stopStream(tabStream);
+      tabBtn?.classList.remove("on");
     }
 
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -149,6 +164,51 @@
     playBtn.textContent = "Play";
     hudSrc.textContent = "MIC";
   }
+  async function captureTab() {
+    await resumeAudio();
+
+    // stop other sources
+    audioEl.pause();
+    disconnectSource();
+
+    if (micStream) {
+      micStream = stopStream(micStream);
+      micBtn.classList.remove("on");
+    }
+
+    if (tabStream) {
+      tabStream = stopStream(tabStream);
+      tabBtn.classList.remove("on");
+      hudSrc.textContent = "—";
+      return;
+    }
+
+    // Screen/tab capture. User should choose the Chrome tab (and enable "Share audio").
+    // On some browsers, you must pick "Chrome Tab" and check "Share audio".
+    tabStream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      }
+    });
+
+    // Create audio source from captured stream
+    srcNode = actx.createMediaStreamSource(tabStream);
+    srcNode.connect(analyser);
+
+    tabBtn.classList.add("on");
+    hudSrc.textContent = "TAB";
+
+    // We don't render the video; stop it right away to reduce overhead while keeping audio.
+    // Some browsers stop audio if you stop video; if that happens for you, comment the next line.
+    const vTracks = tabStream.getVideoTracks();
+    if (vTracks && vTracks[0]) {
+      try { vTracks[0].stop(); } catch {}
+    }
+  }
+
 
   function setMode(m) {
     mode = m;
@@ -272,7 +332,7 @@
   // ===== RENDERERS =====
   function clearBG(w,h, hue, intensity) {
     ctx2d.globalCompositeOperation = "source-over";
-    ctx2d.fillStyle = `hsl(${hue} 40% ${6 + intensity*10}%)`;
+    ctx2d.fillStyle = `hsla(${hue} 40% ${6 + intensity*12}% , ${0.22 + (1-intensity)*0.25})`;
     ctx2d.fillRect(0,0,w,h);
     // vignette
     const g = ctx2d.createRadialGradient(w*0.5,h*0.5, Math.min(w,h)*0.1, w*0.5,h*0.5, Math.min(w,h)*0.7);
@@ -295,7 +355,7 @@
       for (let b=0;b<BANDS;b++){
         const baseHue = (hue + b*18 + r*2) % 360;
         ctx2d.strokeStyle = `hsla(${baseHue}, 95%, 65%, ${0.14 + intensity*0.65})`;
-        ctx2d.lineWidth = 1 + intensity*2.2;
+        ctx2d.lineWidth = 1.6 + intensity*4.2;
 
         ctx2d.beginPath();
         for (let i=0;i<HISTORY;i++){
@@ -337,7 +397,7 @@
 
       const hh = (hue + v*140 + i*0.4) % 360;
       ctx2d.strokeStyle = `hsla(${hh}, 95%, 65%, ${0.10 + v*0.55})`;
-      ctx2d.lineWidth = 1 + v*3.2*(0.5+intensity);
+      ctx2d.lineWidth = 1.2 + v*4.6*(0.7+intensity);
       ctx2d.beginPath();
       ctx2d.moveTo(x1,y1);
       ctx2d.lineTo(x2,y2);
@@ -364,7 +424,7 @@
     for (let i=0;i<bars;i++){
       const idx = Math.floor((i/bars) * freqBuf.length);
       const v = freqBuf[idx] / 255;
-      const barH = (v**1.35) * h * (0.18 + intensity*0.95);
+      const barH = (v**1.25) * h * (0.22 + intensity*1.20);
       const x = i*(bw+gap);
       const y = h - barH;
 
@@ -422,7 +482,7 @@
 
       const x = p.x * w;
       const y = p.y * h;
-      const a = 0.05 + intensity*0.15;
+      const a = 0.07 + intensity*0.22;
       const hh = (hue + p.a*160 + sCentroid*120) % 360;
       ctx2d.fillStyle = `hsla(${hh}, 95%, 65%, ${a})`;
       ctx2d.fillRect(x, y, 1.2, 1.2);
@@ -473,14 +533,16 @@
 
   function render(w,h) {
     // intensity & hue from features
-    const intensity = clamp01((sEnergy*1.45) + (sFlux*0.35));
-    const hue = ((sCentroid*170) + (sFlux*60)) % 360;
+    const intensity = clamp01((sEnergy*2.35) + (sFlux*0.85));
+    const punch = Math.pow(intensity, 0.55); // boosts low levels
+    const i2 = clamp01(punch*1.15);
+    const hue = ((sCentroid*220) + (sFlux*110) + (i2*40)) % 360;
 
-    if (mode === "wave") return renderWave(w,h,hue,intensity);
-    if (mode === "radiate") return renderRadiate(w,h,hue,intensity);
-    if (mode === "blocks") return renderBlocks(w,h,hue,intensity);
-    if (mode === "flow") return renderFlow(w,h,hue,intensity);
-    return renderOrbit(w,h,hue,intensity);
+    if (mode === "wave") return renderWave(w,h,hue,i2);
+    if (mode === "radiate") return renderRadiate(w,h,hue,i2);
+    if (mode === "blocks") return renderBlocks(w,h,hue,i2);
+    if (mode === "flow") return renderFlow(w,h,hue,i2);
+    return renderOrbit(w,h,hue,i2);
   }
 
   function tick(now) {
@@ -531,6 +593,14 @@
     catch (err) {
       console.error(err);
       alert("Mic access blocked. If you opened via file://, run a local server.");
+    }
+  });
+
+  tabBtn?.addEventListener("click", async () => {
+    try { await captureTab(); }
+    catch (err) {
+      console.error(err);
+      alert("Tab capture failed. Use a Chromium browser, choose a Chrome Tab, and enable Share audio.");
     }
   });
 
