@@ -12,16 +12,7 @@
   const playBtn = $("#play");
   const micBtn = $("#mic");
   const tabBtn = $("#tab");
-
-  const hudMode = $("#hudMode");
-  const hudSrc = $("#hudSrc");
-  const hudAudio = $("#hudAudio");
-  const hudEnergy = $("#hudEnergy");
-  const hudFlux = $("#hudFlux");
-  const hudCentroid = $("#hudCentroid");
-  const hudPeak = $("#hudPeak");
-
-  const segBtns = $$(".seg-btn");
+  const layerBtns = $$(".layer-btn");
 
   // WebAudio
   let actx = null;
@@ -29,6 +20,34 @@
   let srcNode = null;
   let micStream = null;
   let tabStream = null;
+
+
+function syncLayerButtons() {
+  layerBtns.forEach(b => {
+    const k = b.dataset.layer;
+    const pressed = (k === "auto") ? autoOn : overlays.has(k);
+    b.setAttribute("aria-pressed", String(pressed));
+  });
+}
+
+function setAuto(on) {
+  autoOn = on;
+  if (autoOn) {
+    // don't clear overlays; auto is the base, overlays are additive
+  }
+  syncLayerButtons();
+}
+
+function toggleOverlay(k) {
+  if (k === "auto") {
+    setAuto(!autoOn);
+    return;
+  }
+  // turning on any overlay doesn't disable auto; they stack
+  if (overlays.has(k)) overlays.delete(k);
+  else overlays.add(k);
+  syncLayerButtons();
+}
 
   // buffers
   let timeBuf = null;
@@ -39,9 +58,10 @@
   let barSmooth = null;
 
   // mode state
-  let lock = "auto";
-  let mode = "wave";
+  let autoOn = true;
+  let baseMode = "wave";
   let lastSwitch = 0;
+  const overlays = new Set(); // additive layers
 
   const HOLD = { orbit: 1400, wave: 900, blocks: 1100, radiate: 520, flow: 1500 };
 
@@ -94,7 +114,6 @@
 
     barSmooth = new Float32Array(160); // #bars for BLOCKS mode
 
-    hudAudio.textContent = actx.state;
   }
 
   function disconnectSource() {
@@ -113,7 +132,6 @@
   async function resumeAudio() {
     ensureAudio();
     if (actx.state === "suspended") await actx.resume();
-    hudAudio.textContent = actx.state;
   }
 
   async function useFile(file) {
@@ -139,7 +157,6 @@
     analyser.connect(actx.destination);
 
     playBtn.disabled = false;
-    hudSrc.textContent = "FILE";
   }
 
   async function useMic() {
@@ -151,7 +168,6 @@
     if (micStream) {
       micStream = stopStream(micStream);
       micBtn.classList.remove("on");
-      hudSrc.textContent = "—";
       return;
     }
 
@@ -167,7 +183,6 @@
 
     micBtn.classList.add("on");
     playBtn.textContent = "Play";
-    hudSrc.textContent = "MIC";
   }
   async function captureTab() {
     await resumeAudio();
@@ -184,7 +199,6 @@
     if (tabStream) {
       tabStream = stopStream(tabStream);
       tabBtn.classList.remove("on");
-      hudSrc.textContent = "—";
       return;
     }
 
@@ -204,7 +218,6 @@
     srcNode.connect(analyser);
 
     tabBtn.classList.add("on");
-    hudSrc.textContent = "TAB";
 
     // We don't render the video; stop it right away to reduce overhead while keeping audio.
     // Some browsers stop audio if you stop video; if that happens for you, comment the next line.
@@ -213,17 +226,7 @@
       try { vTracks[0].stop(); } catch {}
     }
   }
-
-
-  function setMode(m) {
-    mode = m;
-    const label = lock === "auto" ? `AUTO → ${m.toUpperCase()}` : m.toUpperCase();
-    hudMode.textContent = label;
-  }
-
-  function setLock(next) {
     lock = next;
-    segBtns.forEach(b => b.setAttribute("aria-pressed", String(b.dataset.lock === lock)));
     if (lock !== "auto") setMode(lock);
   }
 
@@ -272,10 +275,6 @@
     trend = lerp(trend, dE, TREND_SMOOTH);
 
     // HUD
-    hudEnergy.textContent = sEnergy.toFixed(2);
-    hudFlux.textContent = sFlux.toFixed(2);
-    hudCentroid.textContent = sCentroid.toFixed(2);
-    hudPeak.textContent = sPeak.toFixed(2);
   }
 
   function bandEnergy(bandIdx) {
@@ -325,8 +324,8 @@
 
   function pickMode(m) {
     const want = wantMode(m);
-    if (want === mode) return mode;
-    const allowed = ALLOW[mode] || ["wave"];
+    if (want === baseMode) return baseMode;
+    const allowed = ALLOW[baseMode] || ["wave"];
     if (allowed.includes(want)) return want;
     // fallback: choose closest feel
     if (want === "radiate" && allowed.includes("blocks")) return "blocks";
@@ -348,7 +347,6 @@
   }
 
   function renderWave(w,h, hue, intensity) {
-    clearBG(w,h,hue,intensity);
     ctx2d.globalCompositeOperation = "lighter";
 
     const rowH = h / ROWS;
@@ -382,7 +380,6 @@
   }
 
   function renderRadiate(w,h, hue, intensity) {
-    clearBG(w,h,hue,intensity);
     ctx2d.globalCompositeOperation = "lighter";
     const cx=w*0.5, cy=h*0.5;
 
@@ -439,7 +436,6 @@
   }
 
   function renderBlocks(w,h, hue, intensity) {
-    clearBG(w,h,hue,intensity);
     ctx2d.globalCompositeOperation = "lighter";
 
     const bars = barSmooth ? barSmooth.length : 160;
@@ -503,7 +499,6 @@
   }
 
   function renderFlow(w,h, hue, intensity) {
-    clearBG(w,h,hue,intensity);
     ctx2d.globalCompositeOperation = "lighter";
 
     const t = performance.now();
@@ -560,7 +555,6 @@
   }
 
   function renderOrbit(w,h, hue, intensity) {
-    clearBG(w,h,hue,intensity);
     ctx2d.globalCompositeOperation = "lighter";
 
     const t = performance.now()*0.001;
@@ -616,18 +610,33 @@
   }
 
   function render(w,h) {
-    // intensity & hue from features
-    const intensity = clamp01((sEnergy*2.35) + (sFlux*0.85));
-    const punch = Math.pow(intensity, 0.55); // boosts low levels
-    const i2 = clamp01(punch*1.15);
-    const hue = ((sCentroid*220) + (sFlux*110) + (i2*40)) % 360;
+  // intensity & hue from features
+  const intensity = clamp01((sEnergy*2.35) + (sFlux*0.85));
+  const punch = Math.pow(intensity, 0.55);
+  const i2 = clamp01(punch*1.15);
+  const hue = ((sCentroid*220) + (sFlux*110) + (i2*40)) % 360;
 
-    if (mode === "wave") return renderWave(w,h,hue,i2);
-    if (mode === "radiate") return renderRadiate(w,h,hue,i2);
-    if (mode === "blocks") return renderBlocks(w,h,hue,i2);
-    if (mode === "flow") return renderFlow(w,h,hue,i2);
-    return renderOrbit(w,h,hue,i2);
+  // background + trails once
+  clearBG(w,h,hue,i2);
+
+  // base layer
+  const layersToDraw = [];
+  if (autoOn) layersToDraw.push(baseMode);
+  overlays.forEach(k => layersToDraw.push(k));
+
+  // draw in a pleasing order
+  const order = ["blocks","wave","flow","orbit","radiate"];
+  layersToDraw.sort((a,b) => order.indexOf(a) - order.indexOf(b));
+
+  for (const m of layersToDraw) {
+    if (m === "wave") renderWave(w,h,hue,i2);
+    else if (m === "radiate") renderRadiate(w,h,hue,i2);
+    else if (m === "blocks") renderBlocks(w,h,hue,i2);
+    else if (m === "flow") renderFlow(w,h,hue,i2);
+    else if (m === "orbit") renderOrbit(w,h,hue,i2);
   }
+}
+
 
   function tick(now) {
     resize();
@@ -637,17 +646,17 @@
       updateFeatures(m);
       pushHistory();
 
-      if (lock === "auto") {
-        const target = pickMode(m);
-        const hold = HOLD[mode] ?? 900;
-        if (target !== mode && (now - lastSwitch) > hold) {
-          setMode(target);
-          lastSwitch = now;
-        } else if (hudMode.textContent === "AUTO") {
-          hudMode.textContent = `AUTO → ${mode.toUpperCase()}`;
-        }
-      }
-    }
+// Auto base mode switching (overlays can stack on top)
+if (autoOn) {
+  const target = pickMode(m);
+  const hold = HOLD[baseMode] ?? 900;
+  if (target !== baseMode && (now - lastSwitch) > hold) {
+    baseMode = target;
+    lastSwitch = now;
+  }
+}
+
+          }
 
     render(c.width, c.height);
     requestAnimationFrame(tick);
@@ -665,7 +674,6 @@
     if (audioEl.paused) {
       await audioEl.play();
       playBtn.textContent = "Pause";
-      hudSrc.textContent = "FILE";
     } else {
       audioEl.pause();
       playBtn.textContent = "Play";
@@ -691,17 +699,16 @@
   segBtns.forEach(btn => btn.addEventListener("click", () => setLock(btn.dataset.lock)));
 
   window.addEventListener("keydown", (e) => {
-    if (e.key === " "){ e.preventDefault(); if (!playBtn.disabled) playBtn.click(); }
-    if (e.key === "0") return setLock("auto");
-    if (e.key === "1") return setLock("wave");
-    if (e.key === "2") return setLock("radiate");
-    if (e.key === "3") return setLock("flow");
-    if (e.key === "4") return setLock("blocks");
-    if (e.key === "5") return setLock("orbit");
-  });
+  if (e.key === " "){ e.preventDefault(); if (!playBtn.disabled) playBtn.click(); }
+  if (e.key === "0") return setAuto(!autoOn);
+  if (e.key === "1") return toggleOverlay("wave");
+  if (e.key === "2") return toggleOverlay("radiate");
+  if (e.key === "3") return toggleOverlay("flow");
+  if (e.key === "4") return toggleOverlay("blocks");
+  if (e.key === "5") return toggleOverlay("orbit");
+});
 
   // start
   setMode("wave");
-  hudMode.textContent = "AUTO";
   requestAnimationFrame(tick);
 })();
