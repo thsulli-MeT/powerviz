@@ -35,6 +35,9 @@
   let freqBuf = null;
   let prevFreq = null;
 
+  // smoothing for spectrum bars
+  let barSmooth = null;
+
   // mode state
   let lock = "auto";
   let mode = "wave";
@@ -61,7 +64,7 @@
   let histIdx = 0;
 
   // particles for flow/orbit
-  const PCOUNT = 900;
+  const PCOUNT = 360;
   const parts = Array.from({length: PCOUNT}, () => ({
     x: Math.random(), y: Math.random(),
     vx: 0, vy: 0,
@@ -88,6 +91,8 @@
     timeBuf = new Float32Array(analyser.fftSize);
     freqBuf = new Uint8Array(analyser.frequencyBinCount);
     prevFreq = new Uint8Array(analyser.frequencyBinCount);
+
+    barSmooth = new Float32Array(160); // #bars for BLOCKS mode
 
     hudAudio.textContent = actx.state;
   }
@@ -380,37 +385,56 @@
     clearBG(w,h,hue,intensity);
     ctx2d.globalCompositeOperation = "lighter";
     const cx=w*0.5, cy=h*0.5;
-    const baseR = Math.min(w,h)*0.12;
-    const maxR = Math.min(w,h)*0.46;
 
-    const bins = 220;
+    const minR = Math.min(w,h)*0.10;
+    const maxR = Math.min(w,h)*0.58;
+
+    const bins = 320;
+    const ringCount = 3;
+
+    for (let r=0;r<ringCount;r++){
+      const rr = minR + (r/(ringCount-1))*(maxR-minR) * (0.55 + intensity*0.55);
+      const lw = 8 + r*6 + intensity*10;
+      ctx2d.lineWidth = lw;
+      for (let i=0;i<bins;i+=2){
+        const a0 = (i/bins) * Math.PI*2;
+        const idx = Math.floor((i/bins) * freqBuf.length);
+        const v = (freqBuf[idx]||0) / 255;
+        const seg = (Math.PI*2/bins) * (0.8 + v*0.9);
+        const hh = (hue + v*180 + i*0.25 + r*30) % 360;
+        ctx2d.strokeStyle = `hsla(${hh}, 95%, 62%, ${0.05 + v*0.35 + intensity*0.10})`;
+        ctx2d.beginPath();
+        ctx2d.arc(cx,cy, rr + v*40*(0.3+intensity), a0, a0+seg);
+        ctx2d.stroke();
+      }
+    }
+
+    ctx2d.lineWidth = 2.0 + intensity*4.5;
     for (let i=0;i<bins;i++){
       const a = (i/bins) * Math.PI*2;
       const idx = Math.floor((i/bins) * freqBuf.length);
-      const v = freqBuf[idx] / 255;
-      const r1 = baseR + v*v * (maxR-baseR) * (0.3 + intensity*1.2);
-      const r2 = r1 + 6 + v*40*(0.2+intensity);
+      const v = (freqBuf[idx]||0) / 255;
+      const r1 = minR + v*v*(maxR-minR) * (0.35 + intensity*1.25);
+      const r2 = r1 + 16 + v*70*(0.25+intensity);
       const x1 = cx + Math.cos(a)*r1;
       const y1 = cy + Math.sin(a)*r1;
       const x2 = cx + Math.cos(a)*r2;
       const y2 = cy + Math.sin(a)*r2;
-
-      const hh = (hue + v*140 + i*0.4) % 360;
-      ctx2d.strokeStyle = `hsla(${hh}, 95%, 65%, ${0.10 + v*0.55})`;
-      ctx2d.lineWidth = 1.2 + v*4.6*(0.7+intensity);
+      const hh = (hue + v*220 + i*0.2) % 360;
+      ctx2d.strokeStyle = `hsla(${hh}, 95%, 70%, ${0.06 + v*0.55})`;
       ctx2d.beginPath();
       ctx2d.moveTo(x1,y1);
       ctx2d.lineTo(x2,y2);
       ctx2d.stroke();
     }
 
-    // pulsing core
-    const core = ctx2d.createRadialGradient(cx,cy,0,cx,cy,baseR*(1.2+intensity*0.8));
-    core.addColorStop(0, `hsla(${(hue+40)%360}, 95%, 65%, ${0.25+intensity*0.35})`);
+    const coreR = minR*(1.35 + intensity*1.1);
+    const core = ctx2d.createRadialGradient(cx,cy,0,cx,cy,coreR);
+    core.addColorStop(0, `hsla(${(hue+30)%360}, 95%, 65%, ${0.28+intensity*0.45})`);
     core.addColorStop(1, "rgba(0,0,0,0)");
     ctx2d.fillStyle = core;
     ctx2d.beginPath();
-    ctx2d.arc(cx,cy,baseR*(1.2+intensity*0.8),0,Math.PI*2);
+    ctx2d.arc(cx,cy,coreR,0,Math.PI*2);
     ctx2d.fill();
   }
 
@@ -418,29 +442,54 @@
     clearBG(w,h,hue,intensity);
     ctx2d.globalCompositeOperation = "lighter";
 
-    const bars = 90;
-    const gap = 2;
-    const bw = (w - gap*(bars-1)) / bars;
-    for (let i=0;i<bars;i++){
-      const idx = Math.floor((i/bars) * freqBuf.length);
-      const v = freqBuf[idx] / 255;
-      const barH = (v**1.25) * h * (0.22 + intensity*1.20);
-      const x = i*(bw+gap);
-      const y = h - barH;
+    const bars = barSmooth ? barSmooth.length : 160;
+    const padX = w * 0.035;
+    const padY = h * 0.08;
+    const usableW = w - padX*2;
+    const usableH = h - padY*1.15;
 
-      const hh = (hue + i*1.6 + v*110) % 360;
-      ctx2d.fillStyle = `hsla(${hh}, 95%, 62%, ${0.12 + v*0.65})`;
+    const n = freqBuf.length;
+    const minIdx = 2;
+    const maxIdx = n - 1;
+
+    const gap = Math.max(1, Math.floor(usableW / (bars*40)));
+    const bw = (usableW - gap*(bars-1)) / bars;
+
+    for (let i=0;i<bars;i++){
+      const t = i / (bars-1);
+      const logT = Math.pow(t, 2.25);
+      const idx = Math.floor(minIdx + logT * (maxIdx - minIdx));
+
+      let v = (freqBuf[idx] || 0) / 255;
+      v = Math.pow(v, 0.78);
+
+      const cur = barSmooth[i] || 0;
+      const attack = 0.34 + intensity*0.18;
+      const release = 0.06 + intensity*0.08;
+      const next = v > cur ? (cur + (v-cur)*attack) : (cur + (v-cur)*release);
+      barSmooth[i] = next;
+
+      const hh = (hue + t*220 + next*140) % 360;
+
+      const barH = next * usableH * (0.25 + intensity*1.10);
+      const x = padX + i*(bw+gap);
+      const y = h - padY - barH;
+
+      ctx2d.fillStyle = `hsla(${hh}, 95%, 60%, ${0.14 + next*0.70})`;
       ctx2d.fillRect(x, y, bw, barH);
 
-      // top glow cap
-      ctx2d.fillStyle = `hsla(${hh}, 95%, 70%, ${0.08 + v*0.35})`;
-      ctx2d.fillRect(x, y-2, bw, 2);
+      ctx2d.fillStyle = `hsla(${(hh+20)%360}, 95%, 70%, ${0.06 + next*0.22})`;
+      ctx2d.fillRect(x, y, bw, Math.max(2, barH*0.06));
+
+      if (i % 6 === 0){
+        ctx2d.fillStyle = `rgba(255,255,255,${0.02 + intensity*0.02})`;
+        ctx2d.fillRect(x, h-padY, bw, 1);
+      }
     }
 
-    // rising wash
-    const wash = ctx2d.createLinearGradient(0,h,0,0);
-    wash.addColorStop(0, `rgba(255,255,255,${0.00})`);
-    wash.addColorStop(1, `hsla(${(hue+80)%360}, 95%, 65%, ${0.04 + intensity*0.08})`);
+    const wash = ctx2d.createLinearGradient(0, h, 0, 0);
+    wash.addColorStop(0, "rgba(0,0,0,0)");
+    wash.addColorStop(1, `hsla(${(hue+60)%360}, 95%, 65%, ${0.05 + intensity*0.09})`);
     ctx2d.fillStyle = wash;
     ctx2d.fillRect(0,0,w,h);
   }
@@ -458,77 +507,112 @@
     ctx2d.globalCompositeOperation = "lighter";
 
     const t = performance.now();
-    const spd = (0.0006 + intensity*0.0022);
-    const drag = 0.965;
+    const spd = (0.0010 + intensity*0.0035);
+    const drag = 0.955;
 
     for (let i=0;i<parts.length;i++){
       const p = parts[i];
-      const ax = (p.x - 0.5);
-      const ay = (p.y - 0.5);
+      const px = p.x, py = p.y;
+
       const ang = fieldAngle(p.x, p.y, t, sCentroid);
       const vx = Math.cos(ang) * spd;
       const vy = Math.sin(ang) * spd;
 
-      p.vx = (p.vx + vx + ax*0.00002) * drag;
-      p.vy = (p.vy + vy + ay*0.00002) * drag;
+      p.vx = (p.vx + vx) * drag;
+      p.vy = (p.vy + vy) * drag;
 
-      p.x += p.vx * (1 + sFlux*1.7);
-      p.y += p.vy * (1 + sFlux*1.7);
+      p.x += p.vx * (1 + sFlux*2.2);
+      p.y += p.vy * (1 + sFlux*2.2);
 
-      if (p.x < -0.02) p.x = 1.02;
-      if (p.x > 1.02) p.x = -0.02;
-      if (p.y < -0.02) p.y = 1.02;
-      if (p.y > 1.02) p.y = -0.02;
+      if (p.x < -0.05) p.x = 1.05;
+      if (p.x > 1.05) p.x = -0.05;
+      if (p.y < -0.05) p.y = 1.05;
+      if (p.y > 1.05) p.y = -0.05;
 
-      const x = p.x * w;
-      const y = p.y * h;
-      const a = 0.07 + intensity*0.22;
-      const hh = (hue + p.a*160 + sCentroid*120) % 360;
-      ctx2d.fillStyle = `hsla(${hh}, 95%, 65%, ${a})`;
-      ctx2d.fillRect(x, y, 1.2, 1.2);
+      const x1 = px * w;
+      const y1 = py * h;
+      const x2 = p.x * w;
+      const y2 = p.y * h;
+
+      const band = i % BANDS;
+      const v = bandEnergy(band);
+      const hh = (hue + band*28 + p.a*120 + v*140) % 360;
+
+      ctx2d.strokeStyle = `hsla(${hh}, 95%, 66%, ${0.05 + intensity*0.16 + v*0.14})`;
+      ctx2d.lineWidth = 1.2 + intensity*4.2 + v*2.2;
+      ctx2d.beginPath();
+      ctx2d.moveTo(x1,y1);
+      ctx2d.lineTo(x2,y2);
+      ctx2d.stroke();
     }
 
-    // airy curtain
-    const g = ctx2d.createRadialGradient(w*0.5,h*0.5,0,w*0.5,h*0.5,Math.min(w,h)*0.65);
-    g.addColorStop(0, `hsla(${(hue+40)%360}, 95%, 65%, ${0.03 + intensity*0.06})`);
-    g.addColorStop(1, "rgba(0,0,0,0)");
-    ctx2d.fillStyle = g;
-    ctx2d.fillRect(0,0,w,h);
+    const cx = w*0.5, cy = h*0.5;
+    for (let k=0;k<3;k++){
+      const rr = Math.min(w,h)*(0.22 + k*0.12) * (0.75 + intensity*0.7);
+      const offx = Math.sin(t*0.0006 + k)*w*0.12;
+      const offy = Math.cos(t*0.0005 + k*1.3)*h*0.10;
+      const g = ctx2d.createRadialGradient(cx+offx, cy+offy, 0, cx+offx, cy+offy, rr);
+      g.addColorStop(0, `hsla(${(hue+40+k*30)%360}, 95%, 65%, ${0.06 + intensity*0.12})`);
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx2d.fillStyle = g;
+      ctx2d.fillRect(0,0,w,h);
+    }
   }
 
   function renderOrbit(w,h, hue, intensity) {
     clearBG(w,h,hue,intensity);
     ctx2d.globalCompositeOperation = "lighter";
+
     const t = performance.now()*0.001;
     const cx=w*0.5, cy=h*0.5;
-    const base = Math.min(w,h)*0.12;
-    const r = base + (1-intensity)*Math.min(w,h)*0.18;
+    const base = Math.min(w,h)*0.18;
+    const r = base + (1-intensity)*Math.min(w,h)*0.14;
 
-    // rings
-    for (let k=0;k<4;k++){
-      const rr = r*(1 + k*0.22);
-      ctx2d.strokeStyle = `hsla(${(hue+40+k*25)%360}, 85%, 65%, ${0.07 + (1-intensity)*0.10})`;
-      ctx2d.lineWidth = 1;
-      ctx2d.beginPath();
-      ctx2d.arc(cx,cy,rr,0,Math.PI*2);
-      ctx2d.stroke();
+    for (let k=0;k<3;k++){
+      const rr = r*(1 + k*0.28);
+      const lw = 4 + k*4 + (1-intensity)*4;
+      ctx2d.lineWidth = lw;
+
+      const segs = 14;
+      for (let s=0;s<segs;s++){
+        const a0 = (s/segs)*Math.PI*2 + t*(0.12 + k*0.06);
+        const a1 = a0 + (Math.PI*2/segs) * (0.55 + 0.25*Math.sin(t + s));
+        const hh = (hue + k*35 + s*6) % 360;
+        ctx2d.strokeStyle = `hsla(${hh}, 85%, 68%, ${0.06 + (1-intensity)*0.12})`;
+        ctx2d.beginPath();
+        ctx2d.arc(cx,cy,rr,a0,a1);
+        ctx2d.stroke();
+      }
     }
 
-    // orbiting dots
-    const dots = 80;
+    const dots = 18;
     for (let i=0;i<dots;i++){
-      const a = t*(0.35 + intensity*0.6) + i*(Math.PI*2/dots);
-      const rr = r*(1.0 + 0.45*Math.sin(i*0.7 + t*0.4)) + intensity*18;
+      const band = i % BANDS;
+      const v = bandEnergy(band);
+      const a = t*(0.55 + intensity*0.9) + i*(Math.PI*2/dots);
+      const rr = r*(1.05 + 0.55*Math.sin(i*0.7 + t*0.6)) + intensity*24;
       const x = cx + Math.cos(a)*rr;
       const y = cy + Math.sin(a)*rr;
-      const v = bandEnergy(i % BANDS);
-      const hh = (hue + i*3 + v*140) % 360;
-      const alpha = 0.08 + (1-intensity)*0.18 + v*0.25;
-      ctx2d.fillStyle = `hsla(${hh}, 95%, 70%, ${alpha})`;
+
+      const hh = (hue + band*26 + v*180) % 360;
+      const alpha = 0.12 + (1-intensity)*0.14 + v*0.35;
+      const rad = 6 + v*24*(0.4+intensity);
+
+      const g = ctx2d.createRadialGradient(x,y,0,x,y,rad);
+      g.addColorStop(0, `hsla(${hh}, 95%, 70%, ${alpha})`);
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx2d.fillStyle = g;
       ctx2d.beginPath();
-      ctx2d.arc(x,y, 1.2 + v*3.0, 0, Math.PI*2);
+      ctx2d.arc(x,y,rad,0,Math.PI*2);
       ctx2d.fill();
     }
+
+    const coreR = base*(0.85 + intensity*0.7);
+    const core = ctx2d.createRadialGradient(cx,cy,0,cx,cy,coreR);
+    core.addColorStop(0, `hsla(${(hue+20)%360}, 95%, 65%, ${0.10 + intensity*0.18})`);
+    core.addColorStop(1, "rgba(0,0,0,0)");
+    ctx2d.fillStyle = core;
+    ctx2d.fillRect(0,0,w,h);
   }
 
   function render(w,h) {
