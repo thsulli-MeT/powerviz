@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>SMV Visualizer – Canvas 5-mode</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="brand">
+        <div class="logo">SMV</div>
+        <div class="text">
+          <h1>SMV Visualizer</h1>
+          <p>Canvas renderer • 5 modes • auto switching</p>
+        </div>
+      </div>
+
+      <div class="controls">
+        <label class="btn">
+          <input id="file" type="file" accept="audio/*" />
+          Load audio
+        </label>
+        <button id="play" class="btn" type="button" disabled>Play</button>
+        <button id="mic" class="btn" type="button">Mic</button>
+
+        <div class="seg">
+          <button class="seg-btn" data-lock="auto" aria-pressed="true">Auto</button>
+          <button class="seg-btn" data-lock="wave" aria-pressed="false">Wave</button>
+          <button class="seg-btn" data-lock="radiate" aria-pressed="false">Radiate</button>
+          <button class="seg-btn" data-lock="flow" aria-pressed="false">Flow</button>
+          <button class="seg-btn" data-lock="blocks" aria-pressed="false">Blocks</button>
+          <button class="seg-btn" data-lock="orbit" aria-pressed="false">Orbit</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="stage" id="stage">
+      <canvas id="c"></canvas>
+
+      <div class="hud" id="hud">
+        <div><span class="k">MODE</span> <span id="hudMode">AUTO</span></div>
+        <div><span class="k">SRC</span> <span id="hudSrc">—</span></div>
+        <div><span class="k">AUDIO</span> <span id="hudAudio">idle</span></div>
+        <div><span class="k">ENERGY</span> <span id="hudEnergy">—</span></div>
+        <div><span class="k">FLUX</span> <span id="hudFlux">—</span></div>
+        <div><span class="k">CENTROID</span> <span id="hudCentroid">—</span></div>
+        <div><span class="k">PEAKINESS</span> <span id="hudPeak">—</span></div>
+        <div class="hint">Tip: run from a local server (not file://). Keys: 1–5 lock • 0 auto • Space play/pause</div>
+      </div>
+    </main>
+
+    <footer class="footer">SMV • canvas test</footer>
+  </div>
+
+  <audio id="audio" crossorigin="anonymous"></audio>
+  <script src="app.js"></script>
+</body>
+</html>
