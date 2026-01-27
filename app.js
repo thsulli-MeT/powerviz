@@ -226,8 +226,6 @@ function toggleOverlay(k) {
       try { vTracks[0].stop(); } catch {}
     }
   }
-    lock = next;
-    if (lock !== "auto") setMode(lock);
   }
 
   function analyze() {
@@ -696,7 +694,6 @@ if (autoOn) {
     }
   });
 
-  segBtns.forEach(btn => btn.addEventListener("click", () => setLock(btn.dataset.lock)));
 
   window.addEventListener("keydown", (e) => {
   if (e.key === " "){ e.preventDefault(); if (!playBtn.disabled) playBtn.click(); }
@@ -709,6 +706,5 @@ if (autoOn) {
 });
 
   // start
-  setMode("wave");
   requestAnimationFrame(tick);
 })();
