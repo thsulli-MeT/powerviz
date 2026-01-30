@@ -1,3 +1,5 @@
+// build: 2026-01-29-v13
+console.log('SMV build 2026-01-29-v13 loaded');
 (() => {
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
