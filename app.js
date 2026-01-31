@@ -1,5 +1,5 @@
-// build: 2026-01-29-v15
-console.log("SMV build 2026-01-29-v15 loaded");
+// build: 2026-01-29-v16
+console.log("SMV build 2026-01-29-v16 loaded");
 (() => {
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
@@ -110,7 +110,7 @@ function toggleOverlay(k) {
   }
   window.addEventListener("resize", resize);
 
-  function ensureAudio() {
+  async function ensureAudio() {
     if (actx) return;
     actx = new (window.AudioContext || window.webkitAudioContext)();
     analyser = actx.createAnalyser();
@@ -134,6 +134,7 @@ function toggleOverlay(k) {
 
     barSmooth = new Float32Array(160); // #bars for BLOCKS mode
 
+    return actx;
   }
 
   function disconnectSource() {
@@ -146,8 +147,8 @@ function toggleOverlay(k) {
   }
 
   async function resumeAudio() {
-    ensureAudio();
-    if (actx.state === "suspended") await actx.resume();
+    await ensureAudio();
+    if (actx && actx.state === "suspended") await actx.resume();
   }
 
   async function useFile(file) {
@@ -689,10 +690,12 @@ if (autoOn) {
   }
 
   // UI
-  fileEl.addEventListener("change", (e) => {
+  fileEl.addEventListener("change", async (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
-    useFile(f);
+    await useFile(f);
+    playBtn.disabled = false;
+    try { await resumeAudio(); await audioEl.play(); playBtn.textContent = "Pause"; } catch (err) { console.warn(err); }
   });
 
   playBtn.addEventListener("click", async () => {
