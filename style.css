@@ -1,4 +1,4 @@
-/* build: 2026-01-29-v13 */
+/* build: 2026-01-29-v14 */
 *{margin:0;padding:0;box-sizing:border-box;}
 html,body{height:100%;background:#06070c;color:#eaeaff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
 .app{display:flex;flex-direction:column;height:100%;}
@@ -83,3 +83,6 @@ html,body{height:100%;background:#06070c;color:#eaeaff;font-family:system-ui,-ap
 .layer-btn[data-layer="auto"][aria-pressed="true"]{
   background:rgba(125,249,255,0.16);
 }
+
+
+.btn.on{ outline:1px solid rgba(125,249,255,0.55); box-shadow: 0 0 0 2px rgba(125,249,255,0.10) inset; }

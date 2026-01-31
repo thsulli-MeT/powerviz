@@ -1,5 +1,5 @@
-// build: 2026-01-29-v13
-console.log('SMV build 2026-01-29-v13 loaded');
+// build: 2026-01-29-v14
+console.log("SMV build 2026-01-29-v14 loaded");
 (() => {
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
@@ -13,15 +13,22 @@ console.log('SMV build 2026-01-29-v13 loaded');
   const fileEl = $("#file");
   const playBtn = $("#play");
   const micBtn = $("#mic");
-  const tabBtn = $("#tab");
+  const sysBtn = $("#sys");
   const layerBtns = $$(".layer-btn");
 
   // WebAudio
   let actx = null;
   let analyser = null;
+  let mixGain = null;
+  let fileGain = null;
+  let micGain = null;
+  let sysGain = null;
+  let fileNode = null;
+  let micNode = null;
+  let sysNode = null;
   let srcNode = null;
   let micStream = null;
-  let tabStream = null;
+  let sysStream = null;
 
 
 function syncLayerButtons() {
@@ -107,6 +114,17 @@ function toggleOverlay(k) {
     if (actx) return;
     actx = new (window.AudioContext || window.webkitAudioContext)();
     analyser = actx.createAnalyser();
+    mixGain = actx.createGain();
+    fileGain = actx.createGain();
+    micGain = actx.createGain();
+    sysGain = actx.createGain();
+    fileGain.gain.value = 1.0;
+    micGain.gain.value = 1.0;
+    sysGain.gain.value = 1.0;
+    fileGain.connect(mixGain);
+    micGain.connect(mixGain);
+    sysGain.connect(mixGain);
+    mixGain.connect(analyser);
     analyser.fftSize = 2048;
     analyser.smoothingTimeConstant = 0.72;
 
@@ -119,14 +137,10 @@ function toggleOverlay(k) {
   }
 
   function disconnectSource() {
-    if (srcNode) {
-      try { srcNode.disconnect(); } catch {}
-
-  function stopStream(st) {
-    if (!st) return null;
-    try { st.getTracks().forEach(t => t.stop()); } catch {}
-    return null;
-  }
+  try { if (fileNode) { fileNode.disconnect(); fileNode = null; } } catch {}
+  try { if (micNode)  { micNode.disconnect();  micNode  = null; } } catch {}
+  try { if (sysNode)  { sysNode.disconnect();  sysNode  = null; } } catch {}
+}
       srcNode = null;
     }
   }
@@ -143,9 +157,9 @@ function toggleOverlay(k) {
       micStream = stopStream(micStream);
       micBtn.classList.remove("on");
     }
-    if (tabStream) {
-      tabStream = stopStream(tabStream);
-      tabBtn?.classList.remove("on");
+    if (sysStream) {
+      sysStream = stopStream(sysStream);
+      sysBtn?.classList.remove("on");
     }
     disconnectSource();
 
@@ -154,8 +168,8 @@ function toggleOverlay(k) {
     audioEl.loop = false;
     audioEl.load();
 
-    srcNode = actx.createMediaElementSource(audioEl);
-    srcNode.connect(analyser);
+    fileNode = actx.createMediaElementSource(audioEl);
+    fileNode.connect(fileGain);
     analyser.connect(actx.destination);
 
     playBtn.disabled = false;
@@ -165,7 +179,8 @@ function toggleOverlay(k) {
     await resumeAudio();
 
     audioEl.pause();
-    disconnectSource();
+    // keep mic/system alive; just reset file node
+    try { if (fileNode) { fileNode.disconnect(); fileNode = null; } } catch {}
 
     if (micStream) {
       micStream = stopStream(micStream);
@@ -173,40 +188,42 @@ function toggleOverlay(k) {
       return;
     }
 
-    if (tabStream) {
-      tabStream = stopStream(tabStream);
-      tabBtn?.classList.remove("on");
+    if (sysStream) {
+      sysStream = stopStream(sysStream);
+      sysBtn?.classList.remove("on");
     }
 
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    srcNode = actx.createMediaStreamSource(micStream);
-    srcNode.connect(analyser);
+    micNode = actx.createMediaStreamSource(micStream);
+    fileNode.connect(fileGain);
     // no destination connect to avoid feedback
 
     micBtn.classList.add("on");
     playBtn.textContent = "Play";
   }
-  async function captureTab() {
+  async function captureSystem() {
     await resumeAudio();
 
     // stop other sources
     audioEl.pause();
-    disconnectSource();
+    // keep mic/system alive; just reset file node
+    try { if (fileNode) { fileNode.disconnect(); fileNode = null; } } catch {}
 
     if (micStream) {
       micStream = stopStream(micStream);
       micBtn.classList.remove("on");
     }
 
-    if (tabStream) {
-      tabStream = stopStream(tabStream);
-      tabBtn.classList.remove("on");
+    if (sysStream) {
+      sysStream = stopStream(sysStream);
+      sysBtn.classList.remove("on");
+      sysBtn.setAttribute("aria-pressed","false");
       return;
     }
 
     // Screen/tab capture. User should choose the Chrome tab (and enable "Share audio").
     // On some browsers, you must pick "Chrome Tab" and check "Share audio".
-    tabStream = await navigator.mediaDevices.getDisplayMedia({
+    sysStream = await navigator.mediaDevices.getDisplayMedia({
       video: true,
       audio: {
         echoCancellation: false,
@@ -216,14 +233,15 @@ function toggleOverlay(k) {
     });
 
     // Create audio source from captured stream
-    srcNode = actx.createMediaStreamSource(tabStream);
-    srcNode.connect(analyser);
+    sysNode = actx.createMediaStreamSource(sysStream);
+    fileNode.connect(fileGain);
 
-    tabBtn.classList.add("on");
+    sysBtn.classList.add("on");
+    sysBtn.setAttribute("aria-pressed","true");
 
     // We don't render the video; stop it right away to reduce overhead while keeping audio.
     // Some browsers stop audio if you stop video; if that happens for you, comment the next line.
-    const vTracks = tabStream.getVideoTracks();
+    const vTracks = sysStream.getVideoTracks();
     if (vTracks && vTracks[0]) {
       try { vTracks[0].stop(); } catch {}
     }
@@ -688,13 +706,28 @@ if (autoOn) {
     }
   });
 
-  tabBtn?.addEventListener("click", async () => {
-    try { await captureTab(); }
+  sysBtn?.addEventListener("click", async () => {
+    try { await captureSystem(); }
     catch (err) {
       console.error(err);
-      alert("Tab capture failed. Use a Chromium browser, choose a Chrome Tab, and enable Share audio.");
+      alert("System audio capture failed. Choose a Chrome Tab (or Entire Screen) and enable Share audio.");
     }
   });
+
+
+// Auto-arm System Audio on first user gesture (browser requires gesture for getDisplayMedia)
+let armedOnce = false;
+async function armIfNeeded() {
+  if (armedOnce) return;
+  armedOnce = true;
+  if (sysBtn && sysBtn.classList.contains("on") && !sysStream) {
+    try { await captureSystem(); } catch (e) { console.warn(e); }
+  }
+}
+["click","touchstart","keydown"].forEach(ev => {
+  window.addEventListener(ev, () => { armIfNeeded(); }, { passive:true });
+});
+
 
 
   window.addEventListener("keydown", (e) => {
