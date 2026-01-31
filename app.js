@@ -1,5 +1,5 @@
-// build: 2026-01-29-v14
-console.log("SMV build 2026-01-29-v14 loaded");
+// build: 2026-01-29-v15
+console.log("SMV build 2026-01-29-v15 loaded");
 (() => {
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
@@ -249,7 +249,15 @@ function toggleOverlay(k) {
   }
 
   function analyze() {
-    if (!analyser) return null;
+    // Always return a buffer so visuals run even before audio permissions.
+    if (!analyser) {
+      freqBuf = idleFill();
+      sEnergy = 0.18;
+      sFlux = 0.10 + 0.10*Math.sin(idlePhase*0.6);
+      sCentroid = 0.45 + 0.20*Math.sin(idlePhase*0.4);
+      sPeakiness = 0.20 + 0.10*Math.sin(idlePhase*0.9);
+      return { energy:sEnergy, flux:sFlux, centroid:sCentroid, peakiness:sPeakiness };
+    }
     analyser.getFloatTimeDomainData(timeBuf);
     let sum = 0;
     for (let i=0;i<timeBuf.length;i++){ const v=timeBuf[i]; sum += v*v; }
@@ -725,7 +733,7 @@ async function armIfNeeded() {
   }
 }
 ["click","touchstart","keydown"].forEach(ev => {
-  window.addEventListener(ev, () => { armIfNeeded(); }, { passive:true });
+  window.addEventListener(ev, async () => { try { await ensureAudio(); if (actx && actx.state === "suspended") await actx.resume(); } catch {} armIfNeeded(); }, { once:true, passive:true });
 });
 
 
