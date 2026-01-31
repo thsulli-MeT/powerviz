@@ -1,5 +1,5 @@
-// build: 2026-01-29-v19
-console.log("SMV build 2026-01-29-v19 loaded");
+// build: 2026-01-29-v20
+console.log("SMV build 2026-01-29-v20 loaded");
 
 (() => {
   const $ = (s) => document.querySelector(s);
@@ -15,6 +15,16 @@ console.log("SMV build 2026-01-29-v19 loaded");
   const sysBtn = $("#sys");
   const audioEl = $("#audio");
   const layerBtns = $$(".layer-btn");
+  const overlays = new Set(["wave"]);
+  document.addEventListener("click", (e) => {
+    const b = e.target && e.target.closest && e.target.closest(".layer-btn");
+    if (!b) return;
+    const k = b.dataset.layer;
+    if (!k) return;
+    if (overlays.has(k)) overlays.delete(k); else overlays.add(k);
+    b.setAttribute("aria-pressed", String(overlays.has(k)));
+  });
+
 
   function showErr(msg) {
     errBox.hidden = false;
@@ -181,7 +191,7 @@ console.log("SMV build 2026-01-29-v19 loaded");
       const idx = Math.floor(Math.pow(t,2.2)*(spec.length-1));
       const v=(spec[idx]||0)/255;
       const bh = v*usableH;
-      ctx.fillStyle = `rgba(255,255,255,${0.02+v*0.25})`;
+      ctx.fillStyle = `rgba(255,255,255,${0.06+v*0.35})`;
       ctx.fillRect(padX+i*bw, h-padY-bh, bw*0.85, bh);
     }
     ctx.globalCompositeOperation = "source-over";
@@ -201,7 +211,7 @@ console.log("SMV build 2026-01-29-v19 loaded");
       const r2=r1+20+v*60;
       const x1=cx+Math.cos(a)*r1, y1=cy+Math.sin(a)*r1;
       const x2=cx+Math.cos(a)*r2, y2=cy+Math.sin(a)*r2;
-      ctx.strokeStyle = `rgba(255,79,216,${0.05+v*0.35})`;
+      ctx.strokeStyle = `rgba(255,79,216,${0.10+v*0.45})`;
       ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
     }
     ctx.globalCompositeOperation="source-over";
@@ -219,7 +229,7 @@ console.log("SMV build 2026-01-29-v19 loaded");
       const len = 30 + v*180;
       const ang = ph*0.4 + i*0.02;
       ctx.lineWidth = 1 + v*3;
-      ctx.strokeStyle = `rgba(125,249,255,${0.03+v*0.12})`;
+      ctx.strokeStyle = `rgba(125,249,255,${0.06+v*0.18})`;
       ctx.beginPath();
       ctx.moveTo(x,y);
       ctx.lineTo(x+Math.cos(ang)*len, y+Math.sin(ang)*len);
