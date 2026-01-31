@@ -1,5 +1,5 @@
-// build: 2026-01-29-v18
-console.log("SMV build 2026-01-29-v18 loaded");
+// build: 2026-01-29-v19
+console.log("SMV build 2026-01-29-v19 loaded");
 
 (() => {
   const $ = (s) => document.querySelector(s);
@@ -38,6 +38,7 @@ console.log("SMV build 2026-01-29-v18 loaded");
 
   let actx = null;
   let analyser = null;
+  let outGain = null;
   let srcNode = null;
   let micStream = null;
   let sysStream = null;
@@ -51,6 +52,9 @@ console.log("SMV build 2026-01-29-v18 loaded");
     analyser = actx.createAnalyser();
     analyser.fftSize = 4096;
     analyser.smoothingTimeConstant = 0.82;
+    outGain = actx.createGain();
+    outGain.gain.value = 1.0;
+    outGain.connect(actx.destination);
   }
 
   async function resumeAudio() {
@@ -64,10 +68,13 @@ console.log("SMV build 2026-01-29-v18 loaded");
     return null;
   }
 
-  function connectNode(node) {
+  function connectNode(node, toOutput) {
     try { if (srcNode) srcNode.disconnect(); } catch {}
     srcNode = node;
     try { srcNode.connect(analyser); } catch (e) { showErr("connect error: " + e); }
+    if (toOutput) {
+      try { srcNode.connect(outGain); } catch (e) { showErr("output connect error: " + e); }
+    }
   }
 
   async function useFile(file) {
@@ -79,7 +86,7 @@ console.log("SMV build 2026-01-29-v18 loaded");
     try { if (srcNode) srcNode.disconnect(); } catch {}
     try {
       const node = actx.createMediaElementSource(audioEl);
-      connectNode(node);
+      connectNode(node, true);
     } catch (e) {
       showErr("File source error: " + e);
       return;
@@ -97,7 +104,7 @@ console.log("SMV build 2026-01-29-v18 loaded");
     await resumeAudio();
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const node = actx.createMediaStreamSource(micStream);
-    connectNode(node);
+    connectNode(node, false);
     playBtn.disabled = true;
   }
 
@@ -109,7 +116,7 @@ console.log("SMV build 2026-01-29-v18 loaded");
     });
     try { sysStream.getVideoTracks().forEach(t => t.stop()); } catch {}
     const node = actx.createMediaStreamSource(sysStream);
-    connectNode(node);
+    connectNode(node, false);
     playBtn.disabled = true;
   }
 

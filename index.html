@@ -1,11 +1,11 @@
 <!doctype html>
-<!-- build: 2026-01-29-v18 -->
+<!-- build: 2026-01-29-v19 -->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>SMV PowerViz</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="style.css?v=18" />
+  <link rel="stylesheet" href="style.css?v=19" />
 </head>
 <body>
   <div class="app">
@@ -33,19 +33,21 @@
           <button class="layer-btn" data-layer="radiate" aria-pressed="false">Radiate</button>
           <button class="layer-btn" data-layer="flow" aria-pressed="false">Flow</button>
           <button class="layer-btn" data-layer="orbit" aria-pressed="false">Orbit</button>
-        </div>
+                <div class="sponsor" id="sponsor">Sponsored by <span class="sponsor-name">Your Brand</span></div>
       </div>
-    </header>
+    </header
 
     <main class="stage">
       <canvas id="c"></canvas>
       <div id="err" class="err" hidden></div>
     </main>
 
+    <div class="bottom-banner" id="bottomBanner">Full-width banner • sponsor / promo / now playing</div>
+
     <footer class="footer">SMV</footer>
   </div>
 
   <audio id="audio" crossorigin="anonymous"></audio>
-  <script src="app.js?v=18"></script>
+  <script src="app.js?v=19"></script>
 </body>
 </html>
