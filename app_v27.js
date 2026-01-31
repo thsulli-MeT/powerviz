@@ -1,0 +1,386 @@
+/* build: v27 */
+console.log("SMV build v27 loaded");
+
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => Array.from(document.querySelectorAll(s));
+
+  const canvas = $("#c");
+  const ctx = canvas.getContext("2d", { alpha: false });
+
+  const fileEl = $("#file");
+  const playBtn = $("#play");
+  const micBtn = $("#mic");
+  const sysBtn = $("#sys"); // tolerate older ids
+  const audioEl = $("#audio");
+  const layersEl = $("#layers");
+
+  // ---------- canvas sizing ----------
+  function resize() {
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const parent = canvas.parentElement;
+    const rect = parent ? parent.getBoundingClientRect() : canvas.getBoundingClientRect();
+    const w = Math.max(1, Math.floor(rect.width));
+    const h = Math.max(1, Math.floor(rect.height));
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ---------- audio graph ----------
+  let actx = null;
+  let analyser = null;
+  let outGain = null;
+  let srcNode = null;
+  let micStream = null;
+  let sysStream = null;
+
+  const freqBuf = new Uint8Array(2048);
+
+  function ensureAudio() {
+    if (actx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    actx = new AC();
+    analyser = actx.createAnalyser();
+    analyser.fftSize = 4096;
+    analyser.smoothingTimeConstant = 0.82;
+
+    outGain = actx.createGain();
+    outGain.gain.value = 1.0;
+    outGain.connect(actx.destination);
+  }
+
+  async function resumeAudio() {
+    ensureAudio();
+    if (actx.state === "suspended") await actx.resume();
+  }
+
+  function stopStream(stream) {
+    if (!stream) return null;
+    try { stream.getTracks().forEach(t => t.stop()); } catch {}
+    return null;
+  }
+
+  function disconnectSrc() {
+    try { if (srcNode) srcNode.disconnect(); } catch {}
+    srcNode = null;
+  }
+
+  function connectNode(node, toOutput) {
+    disconnectSrc();
+    srcNode = node;
+    try { srcNode.connect(analyser); } catch (e) { console.warn("connect analyser", e); }
+    if (toOutput) {
+      try { srcNode.connect(outGain); } catch (e) { console.warn("connect output", e); }
+    }
+  }
+
+  async function useFile(file) {
+    await resumeAudio();
+    micStream = stopStream(micStream);
+    sysStream = stopStream(sysStream);
+
+    audioEl.pause();
+    audioEl.src = URL.createObjectURL(file);
+    audioEl.load();
+
+    // IMPORTANT: once routed into WebAudio, you must also connect to destination to hear it
+    const node = actx.createMediaElementSource(audioEl);
+    connectNode(node, true);
+
+    playBtn.disabled = false;
+    playBtn.textContent = "Pause";
+    try {
+      await audioEl.play();
+    } catch {
+      playBtn.textContent = "Play";
+    }
+  }
+
+  async function useMic() {
+    await resumeAudio();
+    sysStream = stopStream(sysStream);
+    micStream = stopStream(micStream);
+
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const node = actx.createMediaStreamSource(micStream);
+    connectNode(node, false); // avoid feedback
+    playBtn.disabled = true;
+  }
+
+  async function useSystem() {
+    await resumeAudio();
+    micStream = stopStream(micStream);
+    sysStream = stopStream(sysStream);
+
+    // Chrome requires a user gesture (button click)
+    sysStream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: true
+    });
+    // stop video track; keep audio
+    try { sysStream.getVideoTracks().forEach(t => t.stop()); } catch {}
+    const node = actx.createMediaStreamSource(sysStream);
+    connectNode(node, false); // avoid echo/feedback
+    playBtn.disabled = true;
+  }
+
+  fileEl?.addEventListener("change", async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    await useFile(f);
+  });
+
+  playBtn?.addEventListener("click", async () => {
+    await resumeAudio();
+    if (audioEl.paused) {
+      await audioEl.play();
+      playBtn.textContent = "Pause";
+    } else {
+      audioEl.pause();
+      playBtn.textContent = "Play";
+    }
+  });
+
+  micBtn?.addEventListener("click", async () => {
+    try { await useMic(); } catch (e) { console.warn(e); }
+  });
+
+  sysBtn?.addEventListener("click", async () => {
+    try { await useSystem(); } catch (e) { console.warn(e); }
+  });
+
+  // ---------- layers ----------
+  const overlays = new Set(["wave"]); // default
+
+  // Delegated click handler: cannot “miss” even if buttons reflow
+  document.addEventListener("click", (e) => {
+    const btn = e.target?.closest?.(".layer-btn");
+    if (!btn) return;
+    const k = btn.dataset.layer;
+    if (!k) return;
+    if (overlays.has(k)) overlays.delete(k);
+    else overlays.add(k);
+    btn.setAttribute("aria-pressed", String(overlays.has(k)));
+  });
+
+  // Keyboard shortcuts 1-5 toggle layers
+  const keyMap = {
+    "1": "wave",
+    "2": "blocks",
+    "3": "radiate",
+    "4": "flow",
+    "5": "orbit"
+  };
+  window.addEventListener("keydown", (e) => {
+    if (!keyMap[e.key]) return;
+    const k = keyMap[e.key];
+    if (overlays.has(k)) overlays.delete(k); else overlays.add(k);
+    const btn = document.querySelector(`.layer-btn[data-layer="${k}"]`);
+    if (btn) btn.setAttribute("aria-pressed", String(overlays.has(k)));
+  });
+
+  // ---------- analysis / idle spectrum ----------
+  let ph = 0;
+  function getSpectrum() {
+    if (analyser && actx && srcNode) {
+      analyser.getByteFrequencyData(freqBuf);
+      return freqBuf;
+    }
+    // idle
+    ph += 0.016;
+    for (let i = 0; i < freqBuf.length; i++) {
+      const t = i / (freqBuf.length - 1);
+      const v = 0.15 + 0.55 * (0.5 + 0.5 * Math.sin(ph * 1.2 + t * 10)) * (0.25 + 0.75 * t);
+      freqBuf[i] = Math.floor(v * 255);
+    }
+    return freqBuf;
+  }
+
+  function clearBG(w, h) {
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  function drawWave(w, h, spec) {
+    ctx.globalCompositeOperation = "lighter";
+    const mid = h * 0.5;
+    ctx.lineWidth = 2.0;
+    ctx.beginPath();
+    for (let x = 0; x < w; x++) {
+      const t = x / (w - 1);
+      const idx = Math.floor(t * (spec.length - 1));
+      const v = (spec[idx] || 0) / 255;
+      const y = mid + Math.sin(t * 10 + ph * 2.0) * h * 0.10 * (0.3 + v) + (v - 0.5) * h * 0.30;
+      if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = "rgba(125,249,255,0.60)";
+    ctx.stroke();
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  function drawBlocks(w, h, spec) {
+    ctx.globalCompositeOperation = "lighter";
+    const bars = 140;
+    const padX = w * 0.04;
+    const padY = h * 0.08;
+    const usableW = w - padX * 2;
+    const usableH = h - padY * 1.2;
+    const bw = usableW / bars;
+    for (let i = 0; i < bars; i++) {
+      const t = i / (bars - 1);
+      const idx = Math.floor(Math.pow(t, 2.2) * (spec.length - 1));
+      const v = (spec[idx] || 0) / 255;
+      const bh = v * usableH;
+      ctx.fillStyle = `rgba(255,255,255,${0.06 + v * 0.35})`;
+      ctx.fillRect(padX + i * bw, h - padY - bh, bw * 0.86, bh);
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  function drawRadiate(w, h, spec) {
+    ctx.globalCompositeOperation = "lighter";
+    const cx = w * 0.5, cy = h * 0.5;
+    const R = Math.min(w, h) * 0.46;
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 360; i += 2) {
+      const t = i / 360;
+      const idx = Math.floor(t * (spec.length - 1));
+      const v = (spec[idx] || 0) / 255;
+      const a = t * Math.PI * 2;
+      const r1 = R * (0.2 + v * 0.9);
+      const r2 = r1 + 25 + v * 85;
+      const x1 = cx + Math.cos(a) * r1, y1 = cy + Math.sin(a) * r1;
+      const x2 = cx + Math.cos(a) * r2, y2 = cy + Math.sin(a) * r2;
+      ctx.strokeStyle = `rgba(255,79,216,${0.10 + v * 0.45})`;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  function drawFlow(w, h, spec) {
+    ctx.globalCompositeOperation = "lighter";
+    const n = 160;
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      const idx = Math.floor(t * (spec.length - 1));
+      const v = (spec[idx] || 0) / 255;
+      const x = (Math.sin(ph * 0.7 + i) * 0.5 + 0.5) * w;
+      const y = (Math.cos(ph * 0.6 + i * 1.3) * 0.5 + 0.5) * h;
+      const len = 30 + v * 200;
+      const ang = ph * 0.4 + i * 0.02;
+      ctx.lineWidth = 1 + v * 3;
+      ctx.strokeStyle = `rgba(125,249,255,${0.06 + v * 0.18})`;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(ang) * len, y + Math.sin(ang) * len);
+      ctx.stroke();
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  // 3D-ish pulse sphere for Orbit
+  const SPHERE_N = 520;
+  const spherePts = (() => {
+    const pts = [];
+    const phi = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < SPHERE_N; i++) {
+      const y = 1 - (i / (SPHERE_N - 1)) * 2;
+      const r = Math.sqrt(Math.max(0, 1 - y * y));
+      const th = phi * i;
+      const x = Math.cos(th) * r;
+      const z = Math.sin(th) * r;
+      pts.push({ x, y, z });
+    }
+    return pts;
+  })();
+  const sustain64 = new Float32Array(64);
+
+  function drawOrbit(w, h, spec) {
+    ctx.globalCompositeOperation = "lighter";
+    const cx = w * 0.5, cy = h * 0.52;
+    const baseR = Math.min(w, h) * 0.30;
+
+    for (let b = 0; b < 64; b++) {
+      const t = b / 63;
+      const idx = Math.floor(Math.pow(t, 1.7) * (spec.length - 1));
+      const v = (spec[idx] || 0) / 255;
+      const attack = 0.22;
+      const release = 0.035;
+      sustain64[b] = Math.max(v, sustain64[b] - release) * (1 - attack) + v * attack;
+    }
+
+    const rotY = ph * 0.9;
+    const rotX = Math.sin(ph * 0.35) * 0.6;
+    const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
+    const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
+
+    const zBias = 1.9;
+    const persp = 1.25;
+
+    const tmp = [];
+    for (let i = 0; i < spherePts.length; i++) {
+      const p = spherePts[i];
+      let x = p.x * cosY - p.z * sinY;
+      let z = p.x * sinY + p.z * cosY;
+      let y = p.y * cosX - z * sinX;
+      z = p.y * sinX + z * cosX;
+
+      const band = Math.max(0, Math.min(63, Math.floor((y * 0.5 + 0.5) * 63)));
+      const s = sustain64[band];
+
+      const zPulse = z + (s - 0.25) * 1.35;
+      const depth = (zPulse + zBias);
+      const k = 1 / (1 + (1 - depth) * persp);
+
+      const px = cx + x * baseR * k;
+      const py = cy + y * baseR * k;
+
+      const rad = 1.2 + s * 11.0;
+      const alpha = 0.04 + s * 0.20 + Math.max(0, zPulse) * 0.04;
+      tmp.push({ px, py, rad, alpha, z: zPulse });
+    }
+    tmp.sort((a, b) => a.z - b.z);
+
+    for (const pt of tmp) {
+      const g = ctx.createRadialGradient(pt.px, pt.py, 0, pt.px, pt.py, pt.rad);
+      g.addColorStop(0, `rgba(255,255,255,${pt.alpha})`);
+      g.addColorStop(0.35, `rgba(125,249,255,${pt.alpha * 0.65})`);
+      g.addColorStop(1, `rgba(255,79,216,${pt.alpha * 0.28})`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(pt.px, pt.py, pt.rad, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.strokeStyle = "rgba(125,249,255,0.12)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, baseR * 1.02, baseR * 0.62, ph * 0.15, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  // ---------- render loop ----------
+  function tick() {
+    ph += 0.010;
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+
+    clearBG(w, h);
+    const spec = getSpectrum();
+
+    if (overlays.has("blocks")) drawBlocks(w, h, spec);
+    if (overlays.has("radiate")) drawRadiate(w, h, spec);
+    if (overlays.has("flow")) drawFlow(w, h, spec);
+    if (overlays.has("orbit")) drawOrbit(w, h, spec);
+    if (overlays.has("wave")) drawWave(w, h, spec);
+
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();

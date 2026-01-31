@@ -1,0 +1,34 @@
+/* build: v27 */
+:root {
+  --bg: #07070b;
+  --fg: rgba(234,234,255,0.92);
+  --muted: rgba(234,234,255,0.62);
+  --border: rgba(255,255,255,0.12);
+}
+
+*{box-sizing:border-box}
+html,body{height:100%; margin:0; background:var(--bg); color:var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;}
+.app{height:100vh; display:flex; flex-direction:column}
+.header{position:relative; z-index:10;flex:0 0 auto;padding:14px 14px 10px; border-bottom:1px solid var(--border); background:rgba(0,0,0,0.25); backdrop-filter: blur(8px);}
+.brand{display:flex; align-items:center; gap:12px}
+.logo{width:44px; height:44px; border-radius:14px; display:grid; place-items:center; border:1px solid var(--border); background:rgba(255,255,255,0.05); font-weight:800; letter-spacing:0.08em}
+.text h1{font-size:18px; margin:0}
+.text p{margin:2px 0 0; color:var(--muted); font-size:12px}
+
+.controls{display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; align-items:center}
+.btn{border:1px solid var(--border); background:rgba(255,255,255,0.06); color:var(--fg); border-radius:14px; padding:10px 12px; cursor:pointer; font-size:14px}
+.btn:disabled{opacity:0.5; cursor:not-allowed}
+.btn input{display:none}
+
+.layers{display:flex; flex-wrap:wrap; gap:6px; padding:4px; border-radius:14px; border:1px solid var(--border); background:rgba(0,0,0,0.18)}
+.layer-btn{border:0; background:transparent; color:rgba(234,234,255,0.85); padding:7px 10px; border-radius:10px; cursor:pointer; font-size:13px}
+.layer-btn[aria-pressed="true"]{background:rgba(125,249,255,0.16); color:#eaeaff}
+
+.stage{position:relative; flex:1 1 auto; min-height:0; position:relative; z-index:1; overflow:hidden;}
+canvas{position:absolute; inset:0; display:block; width:100%; height:100%; pointer-events:none;}
+
+@media (max-width: 640px){
+  .sponsor{ width:100%; margin-left:0; text-align:center; }
+  .bottom-banner{ padding:10px 12px; }
+  .bottom-ad{ min-height:70px; font-size:13px; }
+  }
