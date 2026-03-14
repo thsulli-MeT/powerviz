@@ -18,20 +18,23 @@ console.log("SMV build v27 loaded");
   const logoStyleEl = $("#logoStyle");
   const logoImageEl = $("#logoImage");
   const logoImageStateEl = $("#logoImageState");
+  const imageFilterEl = $("#imageFilter");
 
   const uiParams = {
     hueShift: $("#hueShift"),
     excitement: $("#excitement"),
     shapeBand: $("#shapeBand"),
     amplitude: $("#amplitude"),
-    period: $("#period")
+    period: $("#period"),
+    imageFilterMix: $("#imageFilterMix")
   };
   const uiParamOut = {
     hueShift: $("#hueShiftVal"),
     excitement: $("#excitementVal"),
     shapeBand: $("#shapeBandVal"),
     amplitude: $("#amplitudeVal"),
-    period: $("#periodVal")
+    period: $("#periodVal"),
+    imageFilterMix: $("#imageFilterMixVal")
   };
 
   const vizControls = {
@@ -39,7 +42,8 @@ console.log("SMV build v27 loaded");
     excitement: 1,
     shapeBand: 1,
     amplitude: 1,
-    period: 1
+    period: 1,
+    imageFilterMix: 0.55
   };
 
   let logoImage = null;
@@ -658,6 +662,34 @@ console.log("SMV build v27 loaded");
     ctx.restore();
   }
 
+
+  function getImageFilterParams(mode, mix, energy) {
+    const t = Math.max(0, Math.min(1, mix));
+    const base = {
+      sat: 1.0,
+      con: 1.0,
+      bri: 1.0,
+      gray: 0.0
+    };
+    if (mode === "natural") {
+      base.sat = 0.88; base.con = 1.03; base.bri = 0.95;
+    } else if (mode === "vivid") {
+      base.sat = 1.25; base.con = 1.08; base.bri = 0.94;
+    } else if (mode === "mono") {
+      base.sat = 0.60; base.con = 1.12; base.bri = 0.98; base.gray = 0.55;
+    } else if (mode === "contrast") {
+      base.sat = 0.94; base.con = 1.20; base.bri = 0.90;
+    } else {
+      base.sat = 1.02; base.con = 1.03; base.bri = 0.96;
+    }
+
+    const sat = 1 + (base.sat - 1) * t;
+    const con = 1 + (base.con - 1) * t;
+    const bri = 1 + (base.bri - 1) * t + energy * 0.03;
+    const gray = base.gray * t;
+    return { sat, con, bri, gray };
+  }
+
   function drawUploadedLogoTile(left, top, drawW, drawH, localHue, v, tSpeed) {
     ctx.save();
     ctx.beginPath();
@@ -666,6 +698,9 @@ console.log("SMV build v27 loaded");
 
     ctx.fillStyle = "rgba(0,0,0,0.70)";
     ctx.fillRect(left, top, drawW, drawH);
+
+    const filterMode = imageFilterEl?.value || "balanced";
+    const fp = getImageFilterParams(filterMode, vizControls.imageFilterMix, v);
 
     if (logoImageReady && logoImage) {
       const imgRatio = logoImage.width / Math.max(1, logoImage.height);
@@ -682,16 +717,20 @@ console.log("SMV build v27 loaded");
         sy = Math.floor((logoImage.height - sh) * 0.5);
       }
 
-      const driftX = Math.sin(tSpeed * 0.9) * drawW * 0.06;
-      const driftY = Math.cos(tSpeed * 0.7) * drawH * 0.06;
+      const driftX = Math.sin(tSpeed * 0.9) * drawW * 0.045;
+      const driftY = Math.cos(tSpeed * 0.7) * drawH * 0.045;
+      ctx.filter = `saturate(${fp.sat.toFixed(3)}) contrast(${fp.con.toFixed(3)}) brightness(${fp.bri.toFixed(3)}) grayscale(${fp.gray.toFixed(3)})`;
       ctx.drawImage(logoImage, sx, sy, sw, sh, left + driftX, top + driftY, drawW, drawH);
-      ctx.drawImage(logoImage, sx, sy, sw, sh, left - driftX * 0.45, top - driftY * 0.45, drawW, drawH);
+      ctx.globalAlpha = 0.40 + v * 0.20;
+      ctx.drawImage(logoImage, sx, sy, sw, sh, left - driftX * 0.36, top - driftY * 0.36, drawW, drawH);
+      ctx.globalAlpha = 1;
+      ctx.filter = "none";
     }
 
     const overlay = ctx.createLinearGradient(left, top, left + drawW, top + drawH);
-    overlay.addColorStop(0, `hsla(${localHue.toFixed(1)}, 100%, 50%, ${(0.16 + v * 0.24).toFixed(3)})`);
-    overlay.addColorStop(0.55, `hsla(${(localHue + 62).toFixed(1)}, 100%, 62%, ${(0.14 + v * 0.20).toFixed(3)})`);
-    overlay.addColorStop(1, `hsla(${(localHue + 130).toFixed(1)}, 100%, 53%, ${(0.14 + v * 0.20).toFixed(3)})`);
+    overlay.addColorStop(0, `hsla(${localHue.toFixed(1)}, 92%, 50%, ${(0.07 + v * 0.14).toFixed(3)})`);
+    overlay.addColorStop(0.55, `hsla(${(localHue + 62).toFixed(1)}, 90%, 60%, ${(0.06 + v * 0.12).toFixed(3)})`);
+    overlay.addColorStop(1, `hsla(${(localHue + 130).toFixed(1)}, 88%, 52%, ${(0.06 + v * 0.12).toFixed(3)})`);
     ctx.fillStyle = overlay;
     ctx.fillRect(left, top, drawW, drawH);
 
