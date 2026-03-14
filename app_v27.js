@@ -14,6 +14,30 @@ console.log("SMV build v27 loaded");
   const sysBtn = $("#sys"); // tolerate older ids
   const audioEl = $("#audio");
   const layersEl = $("#layers");
+  const vizMethodEl = $("#vizMethod");
+
+  const uiParams = {
+    hueShift: $("#hueShift"),
+    excitement: $("#excitement"),
+    shapeBand: $("#shapeBand"),
+    amplitude: $("#amplitude"),
+    period: $("#period")
+  };
+  const uiParamOut = {
+    hueShift: $("#hueShiftVal"),
+    excitement: $("#excitementVal"),
+    shapeBand: $("#shapeBandVal"),
+    amplitude: $("#amplitudeVal"),
+    period: $("#periodVal")
+  };
+
+  const vizControls = {
+    hueShift: 0,
+    excitement: 1,
+    shapeBand: 1,
+    amplitude: 1,
+    period: 1
+  };
 
   // ---------- canvas sizing ----------
   function resize() {
@@ -28,6 +52,22 @@ console.log("SMV build v27 loaded");
   }
   window.addEventListener("resize", resize);
   resize();
+
+  function fmtVal(k, v) {
+    return k === "hueShift" ? String(Math.round(v)) : v.toFixed(2);
+  }
+
+  function updateParam(name) {
+    const input = uiParams[name];
+    if (!input) return;
+    vizControls[name] = Number(input.value);
+    if (uiParamOut[name]) uiParamOut[name].textContent = fmtVal(name, vizControls[name]);
+  }
+
+  Object.keys(uiParams).forEach((k) => {
+    updateParam(k);
+    uiParams[k]?.addEventListener("input", () => updateParam(k));
+  });
 
   // ---------- audio graph ----------
   let actx = null;
@@ -164,9 +204,39 @@ console.log("SMV build v27 loaded");
     if (overlays.has(k)) overlays.delete(k);
     else overlays.add(k);
     btn.setAttribute("aria-pressed", String(overlays.has(k)));
+    if (vizMethodEl) vizMethodEl.value = "custom";
   });
 
-  // Keyboard shortcuts 1-5 toggle layers
+  function syncLayerButtons() {
+    $$(".layer-btn").forEach((btn) => {
+      const k = btn.dataset.layer;
+      btn.setAttribute("aria-pressed", String(overlays.has(k)));
+    });
+  }
+
+  function setVizMethod(method) {
+    if (method === "custom") return;
+    overlays.clear();
+    if (method === "cymatic") {
+      overlays.add("cymatic");
+      overlays.add("wave");
+    } else if (method === "orbital") {
+      overlays.add("orbit");
+      overlays.add("flow");
+    } else if (method === "bars") {
+      overlays.add("blocks");
+      overlays.add("wave");
+    } else if (method === "full") {
+      ["wave", "blocks", "radiate", "flow", "orbit", "cymatic"].forEach((k) => overlays.add(k));
+    }
+    syncLayerButtons();
+  }
+
+  vizMethodEl?.addEventListener("change", () => {
+    setVizMethod(vizMethodEl.value);
+  });
+
+  // Keyboard shortcuts 1-6 toggle layers
   const keyMap = {
     "1": "wave",
     "2": "blocks",
@@ -181,6 +251,7 @@ console.log("SMV build v27 loaded");
     if (overlays.has(k)) overlays.delete(k); else overlays.add(k);
     const btn = document.querySelector(`.layer-btn[data-layer="${k}"]`);
     if (btn) btn.setAttribute("aria-pressed", String(overlays.has(k)));
+    if (vizMethodEl) vizMethodEl.value = "custom";
   });
 
   // ---------- analysis / idle spectrum ----------
@@ -214,10 +285,11 @@ console.log("SMV build v27 loaded");
       const t = x / (w - 1);
       const idx = Math.floor(t * (spec.length - 1));
       const v = (spec[idx] || 0) / 255;
-      const y = mid + Math.sin(t * 10 + ph * 2.0) * h * 0.10 * (0.3 + v) + (v - 0.5) * h * 0.30;
+      const y = mid + Math.sin(t * 10 + ph * 2.0) * h * 0.10 * (0.3 + v) * vizControls.amplitude + (v - 0.5) * h * 0.30 * vizControls.amplitude;
       if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
-    ctx.strokeStyle = "rgba(125,249,255,0.60)";
+    const hue = 190 + vizControls.hueShift;
+    ctx.strokeStyle = `hsla(${hue.toFixed(1)}, 95%, 72%, ${Math.min(0.85, 0.36 + vizControls.excitement * 0.24).toFixed(3)})`;
     ctx.stroke();
     ctx.globalCompositeOperation = "source-over";
   }
@@ -234,8 +306,9 @@ console.log("SMV build v27 loaded");
       const t = i / (bars - 1);
       const idx = Math.floor(Math.pow(t, 2.2) * (spec.length - 1));
       const v = (spec[idx] || 0) / 255;
-      const bh = v * usableH;
-      ctx.fillStyle = `rgba(255,255,255,${0.06 + v * 0.35})`;
+      const bh = v * usableH * vizControls.amplitude;
+      const hue = 200 + vizControls.hueShift + t * 70;
+      ctx.fillStyle = `hsla(${hue.toFixed(1)}, 92%, ${(45 + vizControls.excitement * 14).toFixed(1)}%, ${(0.05 + v * 0.30 * vizControls.excitement).toFixed(3)})`;
       ctx.fillRect(padX + i * bw, h - padY - bh, bw * 0.86, bh);
     }
     ctx.globalCompositeOperation = "source-over";
@@ -252,10 +325,11 @@ console.log("SMV build v27 loaded");
       const v = (spec[idx] || 0) / 255;
       const a = t * Math.PI * 2;
       const r1 = R * (0.2 + v * 0.9);
-      const r2 = r1 + 25 + v * 85;
+      const r2 = r1 + (25 + v * 85) * vizControls.amplitude;
       const x1 = cx + Math.cos(a) * r1, y1 = cy + Math.sin(a) * r1;
       const x2 = cx + Math.cos(a) * r2, y2 = cy + Math.sin(a) * r2;
-      ctx.strokeStyle = `rgba(255,79,216,${0.10 + v * 0.45})`;
+      const hue = 318 + vizControls.hueShift * 0.6 + t * 24;
+      ctx.strokeStyle = `hsla(${hue.toFixed(1)}, 98%, 66%, ${(0.09 + v * 0.40 * vizControls.excitement).toFixed(3)})`;
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
     }
     ctx.globalCompositeOperation = "source-over";
@@ -263,17 +337,18 @@ console.log("SMV build v27 loaded");
 
   function drawFlow(w, h, spec) {
     ctx.globalCompositeOperation = "lighter";
-    const n = 160;
+    const n = Math.floor(90 + 90 * vizControls.excitement);
     for (let i = 0; i < n; i++) {
       const t = i / (n - 1);
       const idx = Math.floor(t * (spec.length - 1));
       const v = (spec[idx] || 0) / 255;
       const x = (Math.sin(ph * 0.7 + i) * 0.5 + 0.5) * w;
       const y = (Math.cos(ph * 0.6 + i * 1.3) * 0.5 + 0.5) * h;
-      const len = 30 + v * 200;
+      const len = (30 + v * 200) * vizControls.amplitude;
       const ang = ph * 0.4 + i * 0.02;
       ctx.lineWidth = 1 + v * 3;
-      ctx.strokeStyle = `rgba(125,249,255,${0.06 + v * 0.18})`;
+      const hue = 196 + vizControls.hueShift + t * 40;
+      ctx.strokeStyle = `hsla(${hue.toFixed(1)}, 90%, 70%, ${(0.05 + v * 0.18 * vizControls.excitement).toFixed(3)})`;
       ctx.beginPath();
       ctx.moveTo(x, y);
       ctx.lineTo(x + Math.cos(ang) * len, y + Math.sin(ang) * len);
@@ -302,7 +377,7 @@ console.log("SMV build v27 loaded");
   function drawOrbit(w, h, spec) {
     ctx.globalCompositeOperation = "lighter";
     const cx = w * 0.5, cy = h * 0.52;
-    const baseR = Math.min(w, h) * 0.30;
+    const baseR = Math.min(w, h) * 0.30 * vizControls.amplitude;
 
     for (let b = 0; b < 64; b++) {
       const t = b / 63;
@@ -348,8 +423,10 @@ console.log("SMV build v27 loaded");
     for (const pt of tmp) {
       const g = ctx.createRadialGradient(pt.px, pt.py, 0, pt.px, pt.py, pt.rad);
       g.addColorStop(0, `rgba(255,255,255,${pt.alpha})`);
-      g.addColorStop(0.35, `rgba(125,249,255,${pt.alpha * 0.65})`);
-      g.addColorStop(1, `rgba(255,79,216,${pt.alpha * 0.28})`);
+      const hueA = 190 + vizControls.hueShift;
+      const hueB = 312 + vizControls.hueShift;
+      g.addColorStop(0.35, `hsla(${hueA.toFixed(1)}, 96%, 70%, ${(pt.alpha * 0.65).toFixed(3)})`);
+      g.addColorStop(1, `hsla(${hueB.toFixed(1)}, 92%, 62%, ${(pt.alpha * 0.28).toFixed(3)})`);
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.arc(pt.px, pt.py, pt.rad, 0, Math.PI * 2);
@@ -382,19 +459,20 @@ console.log("SMV build v27 loaded");
     const lowMid = (spec[64] || 0) / 255;
     const high = (spec[300] || 0) / 255;
 
-    const modeA = 2 + Math.floor(low * 8);
-    const modeB = 3 + Math.floor(lowMid * 11);
-    const modeC = 5 + Math.floor(high * 14);
+    const shapeScale = vizControls.shapeBand;
+    const modeA = 2 + Math.floor(low * 8 * shapeScale);
+    const modeB = 3 + Math.floor(lowMid * 11 * shapeScale);
+    const modeC = 5 + Math.floor(high * 14 * shapeScale);
 
     const points = 720;
-    const rings = 7;
+    const rings = Math.floor(5 + 4 * Math.min(1.8, vizControls.excitement));
 
     for (let r = 0; r < rings; r++) {
       const rt = r / (rings - 1);
-      const baseRadius = minDim * (0.10 + rt * 0.34);
+      const baseRadius = minDim * (0.10 + rt * 0.34) * vizControls.amplitude;
       const harmonicMix = 0.34 + rt * 0.66;
-      const lineAlpha = 0.06 + loudness * 0.23 + rt * 0.05;
-      const hue = 190 + loudness * 120 + rt * 36;
+      const lineAlpha = 0.06 + loudness * 0.23 * vizControls.excitement + rt * 0.05;
+      const hue = 190 + vizControls.hueShift + loudness * 120 + rt * 36;
 
       ctx.beginPath();
       for (let i = 0; i <= points; i++) {
@@ -404,7 +482,7 @@ console.log("SMV build v27 loaded");
         const radialWave =
           Math.sin(a * modeA + ph * 1.25) * 0.30 +
           Math.sin(a * modeB - ph * 0.8) * 0.22 +
-          Math.sin(a * modeC + ph * 0.45) * 0.16;
+          Math.sin(a * modeC + ph * 0.45) * (0.12 + 0.08 * vizControls.excitement);
 
         const contour =
           1 +
@@ -426,7 +504,7 @@ console.log("SMV build v27 loaded");
       ctx.stroke();
     }
 
-    const grain = 420;
+    const grain = Math.floor(260 + 260 * vizControls.excitement);
     for (let i = 0; i < grain; i++) {
       const t = i / grain;
       const a = t * Math.PI * 2 + ph * 0.2;
@@ -442,9 +520,12 @@ console.log("SMV build v27 loaded");
     ctx.globalCompositeOperation = "source-over";
   }
 
+  syncLayerButtons();
+  setVizMethod(vizMethodEl?.value || "custom");
+
   // ---------- render loop ----------
   function tick() {
-    ph += 0.010;
+    ph += 0.010 * vizControls.period;
     const rect = canvas.getBoundingClientRect();
     const w = rect.width;
     const h = rect.height;
@@ -458,6 +539,12 @@ console.log("SMV build v27 loaded");
     if (overlays.has("orbit")) drawOrbit(w, h, spec);
     if (overlays.has("cymatic")) drawCymatic(w, h, spec);
     if (overlays.has("wave")) drawWave(w, h, spec);
+
+    if (Math.abs(vizControls.hueShift) > 1 || vizControls.excitement > 1.05) {
+      const tintA = Math.min(0.16, 0.04 + (vizControls.excitement - 1) * 0.08);
+      ctx.fillStyle = `hsla(${(200 + vizControls.hueShift).toFixed(1)}, 88%, 54%, ${tintA.toFixed(3)})`;
+      ctx.fillRect(0, 0, w, h);
+    }
 
     requestAnimationFrame(tick);
   }

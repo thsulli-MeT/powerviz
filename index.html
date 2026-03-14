@@ -35,8 +35,6 @@
           <button class="layer-btn" data-layer="orbit" aria-pressed="false">Orbit</button>
           <button class="layer-btn" data-layer="cymatic" aria-pressed="false">Cymatic</button>
         </div>
-
-        <div class="sponsor" id="sponsor">Sponsored by <span class="sponsor-name">Torus Media</span></div>
       </div>
     </header>
 
@@ -44,23 +42,53 @@
       <canvas id="c"></canvas>
     </main>
 
-    <div class="bottom-banner" id="bottomBanner">
-  <a
-    href="https://shortmusicvideos.com"
-    target="_blank"
-    rel="noopener noreferrer"
-    class="bottom-ad-link"
-  >
-    <img
-      src="bottom-banner.jpg"
-      alt="SMV Power Viz – Short Music Videos"
-      class="bottom-ad-img"
-    />
-  </a>
-</div>
+    <section class="control-panel" id="controlPanel" aria-label="Visualizer control panel">
+      <div class="panel-header">Visualizer Control Panel</div>
 
+      <label class="control-row">
+        <span>Viz Method</span>
+        <select id="vizMethod" class="panel-select">
+          <option value="custom">Custom (layer buttons)</option>
+          <option value="cymatic">Cymatic Focus</option>
+          <option value="orbital">Orbital Pulse</option>
+          <option value="bars">Bars + Wave</option>
+          <option value="full">Full Stack</option>
+        </select>
+      </label>
 
-  <audio id="audio" crossorigin="anonymous"></audio>
+      <label class="control-row">
+        <span>Hue</span>
+        <input id="hueShift" type="range" min="-180" max="180" value="0" step="1" />
+        <output id="hueShiftVal">0</output>
+      </label>
+
+      <label class="control-row">
+        <span>Excitement</span>
+        <input id="excitement" type="range" min="0.5" max="2.0" value="1.0" step="0.01" />
+        <output id="excitementVal">1.00</output>
+      </label>
+
+      <label class="control-row">
+        <span>Shape Band Sizer</span>
+        <input id="shapeBand" type="range" min="0.6" max="2.5" value="1.0" step="0.01" />
+        <output id="shapeBandVal">1.00</output>
+      </label>
+
+      <label class="control-row">
+        <span>Amplitude</span>
+        <input id="amplitude" type="range" min="0.4" max="2.4" value="1.0" step="0.01" />
+        <output id="amplitudeVal">1.00</output>
+      </label>
+
+      <label class="control-row">
+        <span>Period</span>
+        <input id="period" type="range" min="0.4" max="2.4" value="1.0" step="0.01" />
+        <output id="periodVal">1.00</output>
+      </label>
+    </section>
+
+    <audio id="audio" crossorigin="anonymous"></audio>
+  </div>
   <script src="app_v27.js"></script>
 </body>
 </html>
