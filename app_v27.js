@@ -227,7 +227,9 @@ console.log("SMV build v27 loaded");
       overlays.add("blocks");
       overlays.add("wave");
     } else if (method === "full") {
-      ["wave", "blocks", "radiate", "flow", "orbit", "cymatic"].forEach((k) => overlays.add(k));
+      ["wave", "blocks", "radiate", "flow", "orbit", "cymatic", "logos"].forEach((k) => overlays.add(k));
+    } else if (method === "logos") {
+      overlays.add("logos");
     }
     syncLayerButtons();
   }
@@ -236,14 +238,15 @@ console.log("SMV build v27 loaded");
     setVizMethod(vizMethodEl.value);
   });
 
-  // Keyboard shortcuts 1-6 toggle layers
+  // Keyboard shortcuts 1-7 toggle layers
   const keyMap = {
     "1": "wave",
     "2": "blocks",
     "3": "radiate",
     "4": "flow",
     "5": "orbit",
-    "6": "cymatic"
+    "6": "cymatic",
+    "7": "logos"
   };
   window.addEventListener("keydown", (e) => {
     if (!keyMap[e.key]) return;
@@ -520,6 +523,103 @@ console.log("SMV build v27 loaded");
     ctx.globalCompositeOperation = "source-over";
   }
 
+
+  function drawLogoWall(w, h, spec) {
+    ctx.globalCompositeOperation = "lighter";
+
+    let energySum = 0;
+    for (let i = 0; i < spec.length; i++) energySum += spec[i];
+    const loudness = energySum / (spec.length * 255);
+
+    let bassSum = 0;
+    const bassBins = 56;
+    for (let i = 0; i < bassBins; i++) bassSum += spec[i] || 0;
+    const bass = bassSum / (bassBins * 255);
+
+    const beat = Math.min(1.55, 0.62 + bass * 1.25 * vizControls.excitement);
+    const cell = Math.max(80, Math.min(240, 150 / vizControls.shapeBand));
+    const gap = Math.max(6, 18 - vizControls.excitement * 4);
+
+    const cols = Math.max(2, Math.ceil((w + gap) / (cell + gap)));
+    const rows = Math.max(2, Math.ceil((h + gap) / (cell + gap)));
+    const tileW = (w - gap * (cols + 1)) / cols;
+    const tileH = (h - gap * (rows + 1)) / rows;
+
+    const baseHue = 205 + vizControls.hueShift;
+    const tSpeed = ph * (0.9 + vizControls.period * 0.7);
+
+    for (let ry = 0; ry < rows; ry++) {
+      for (let cx = 0; cx < cols; cx++) {
+        const idx01 = (ry * cols + cx) / Math.max(1, rows * cols - 1);
+        const band = Math.floor(idx01 * Math.min(spec.length - 1, 560));
+        const v = (spec[band] || 0) / 255;
+
+        const x = gap + cx * (tileW + gap);
+        const y = gap + ry * (tileH + gap);
+
+        const pulse = 0.75 + beat * 0.42 + v * 0.34;
+        const s = pulse * vizControls.amplitude;
+        const cxm = x + tileW * 0.5;
+        const cym = y + tileH * 0.5;
+
+        const drawW = tileW * s;
+        const drawH = tileH * s;
+        const left = cxm - drawW * 0.5;
+        const top = cym - drawH * 0.5;
+
+        const radius = Math.max(8, Math.min(drawW, drawH) * 0.12);
+        const localHue = baseHue + idx01 * 90 + Math.sin(tSpeed + idx01 * 8) * 26;
+
+        const grad = ctx.createLinearGradient(left, top, left + drawW, top + drawH);
+        grad.addColorStop(0, `hsla(${localHue.toFixed(1)}, 98%, ${(42 + loudness * 18).toFixed(1)}%, ${(0.20 + loudness * 0.20).toFixed(3)})`);
+        grad.addColorStop(0.5, `hsla(${(localHue + 42).toFixed(1)}, 96%, ${(56 + bass * 20).toFixed(1)}%, ${(0.25 + v * 0.28).toFixed(3)})`);
+        grad.addColorStop(1, `hsla(${(localHue + 108).toFixed(1)}, 96%, ${(44 + loudness * 16).toFixed(1)}%, ${(0.22 + v * 0.22).toFixed(3)})`);
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(left + radius, top);
+        ctx.lineTo(left + drawW - radius, top);
+        ctx.quadraticCurveTo(left + drawW, top, left + drawW, top + radius);
+        ctx.lineTo(left + drawW, top + drawH - radius);
+        ctx.quadraticCurveTo(left + drawW, top + drawH, left + drawW - radius, top + drawH);
+        ctx.lineTo(left + radius, top + drawH);
+        ctx.quadraticCurveTo(left, top + drawH, left, top + drawH - radius);
+        ctx.lineTo(left, top + radius);
+        ctx.quadraticCurveTo(left, top, left + radius, top);
+        ctx.closePath();
+        ctx.clip();
+
+        ctx.fillStyle = "rgba(0,0,0,0.82)";
+        ctx.fillRect(left, top, drawW, drawH);
+
+        const flowX = Math.sin(tSpeed + cx * 0.55 - ry * 0.41) * drawW * 0.32;
+        const flowY = Math.cos(tSpeed * 0.8 + ry * 0.44) * drawH * 0.28;
+        ctx.fillStyle = grad;
+        ctx.fillRect(left + flowX, top + flowY, drawW, drawH);
+        ctx.fillRect(left - flowX * 0.5, top - flowY * 0.5, drawW, drawH);
+
+        const smvSize = drawW * 0.46;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = `900 ${smvSize.toFixed(1)}px Arial, sans-serif`;
+        ctx.fillStyle = "rgba(250,252,255,0.94)";
+        ctx.fillText("SMV", left + drawW * 0.5, top + drawH * 0.47);
+
+        const tagSize = Math.max(8, drawW * 0.10);
+        ctx.font = `700 ${tagSize.toFixed(1)}px Arial, sans-serif`;
+        ctx.fillStyle = "rgba(245,248,255,0.9)";
+        ctx.fillText("POWER VIZ", left + drawW * 0.5, top + drawH * 0.78);
+
+        ctx.lineWidth = 1.6 + v * 1.8;
+        ctx.strokeStyle = `hsla(${(localHue + 120).toFixed(1)}, 98%, 72%, ${(0.34 + v * 0.32).toFixed(3)})`;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    ctx.globalCompositeOperation = "source-over";
+  }
+
   syncLayerButtons();
   setVizMethod(vizMethodEl?.value || "custom");
 
@@ -538,6 +638,7 @@ console.log("SMV build v27 loaded");
     if (overlays.has("flow")) drawFlow(w, h, spec);
     if (overlays.has("orbit")) drawOrbit(w, h, spec);
     if (overlays.has("cymatic")) drawCymatic(w, h, spec);
+    if (overlays.has("logos")) drawLogoWall(w, h, spec);
     if (overlays.has("wave")) drawWave(w, h, spec);
 
     if (Math.abs(vizControls.hueShift) > 1 || vizControls.excitement > 1.05) {
