@@ -16,6 +16,8 @@ console.log("SMV build v27 loaded");
   const layersEl = $("#layers");
   const vizMethodEl = $("#vizMethod");
   const logoStyleEl = $("#logoStyle");
+  const logoImageEl = $("#logoImage");
+  const logoImageStateEl = $("#logoImageState");
 
   const uiParams = {
     hueShift: $("#hueShift"),
@@ -39,6 +41,10 @@ console.log("SMV build v27 loaded");
     amplitude: 1,
     period: 1
   };
+
+  let logoImage = null;
+  let logoImageURL = null;
+  let logoImageReady = false;
 
   // ---------- canvas sizing ----------
   function resize() {
@@ -68,6 +74,28 @@ console.log("SMV build v27 loaded");
   Object.keys(uiParams).forEach((k) => {
     updateParam(k);
     uiParams[k]?.addEventListener("input", () => updateParam(k));
+  });
+
+  logoImageEl?.addEventListener("change", () => {
+    const f = logoImageEl.files && logoImageEl.files[0];
+    if (!f) {
+      logoImageReady = false;
+      if (logoImageStateEl) logoImageStateEl.textContent = "none";
+      return;
+    }
+    if (logoImageURL) URL.revokeObjectURL(logoImageURL);
+    logoImageURL = URL.createObjectURL(f);
+    const img = new Image();
+    img.onload = () => {
+      logoImage = img;
+      logoImageReady = true;
+      if (logoImageStateEl) logoImageStateEl.textContent = "loaded";
+    };
+    img.onerror = () => {
+      logoImageReady = false;
+      if (logoImageStateEl) logoImageStateEl.textContent = "error";
+    };
+    img.src = logoImageURL;
   });
 
   // ---------- audio graph ----------
@@ -630,6 +658,49 @@ console.log("SMV build v27 loaded");
     ctx.restore();
   }
 
+  function drawUploadedLogoTile(left, top, drawW, drawH, localHue, v, tSpeed) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(left, top, drawW, drawH);
+    ctx.clip();
+
+    ctx.fillStyle = "rgba(0,0,0,0.70)";
+    ctx.fillRect(left, top, drawW, drawH);
+
+    if (logoImageReady && logoImage) {
+      const imgRatio = logoImage.width / Math.max(1, logoImage.height);
+      const boxRatio = drawW / Math.max(1, drawH);
+      let sw = logoImage.width;
+      let sh = logoImage.height;
+      let sx = 0;
+      let sy = 0;
+      if (imgRatio > boxRatio) {
+        sw = Math.floor(sh * boxRatio);
+        sx = Math.floor((logoImage.width - sw) * 0.5);
+      } else {
+        sh = Math.floor(sw / boxRatio);
+        sy = Math.floor((logoImage.height - sh) * 0.5);
+      }
+
+      const driftX = Math.sin(tSpeed * 0.9) * drawW * 0.06;
+      const driftY = Math.cos(tSpeed * 0.7) * drawH * 0.06;
+      ctx.drawImage(logoImage, sx, sy, sw, sh, left + driftX, top + driftY, drawW, drawH);
+      ctx.drawImage(logoImage, sx, sy, sw, sh, left - driftX * 0.45, top - driftY * 0.45, drawW, drawH);
+    }
+
+    const overlay = ctx.createLinearGradient(left, top, left + drawW, top + drawH);
+    overlay.addColorStop(0, `hsla(${localHue.toFixed(1)}, 100%, 50%, ${(0.16 + v * 0.24).toFixed(3)})`);
+    overlay.addColorStop(0.55, `hsla(${(localHue + 62).toFixed(1)}, 100%, 62%, ${(0.14 + v * 0.20).toFixed(3)})`);
+    overlay.addColorStop(1, `hsla(${(localHue + 130).toFixed(1)}, 100%, 53%, ${(0.14 + v * 0.20).toFixed(3)})`);
+    ctx.fillStyle = overlay;
+    ctx.fillRect(left, top, drawW, drawH);
+
+    ctx.lineWidth = 1.4 + v * 1.8;
+    ctx.strokeStyle = `hsla(${(localHue + 180).toFixed(1)}, 100%, 75%, ${(0.26 + v * 0.28).toFixed(3)})`;
+    ctx.strokeRect(left + 1.5, top + 1.5, drawW - 3, drawH - 3);
+    ctx.restore();
+  }
+
   function drawLogoWall(w, h, spec) {
     ctx.globalCompositeOperation = "lighter";
 
@@ -653,6 +724,7 @@ console.log("SMV build v27 loaded");
 
     const baseHue = 205 + vizControls.hueShift;
     const style = logoStyleEl?.value || "mix";
+    const effectiveStyle = style === "uploaded" && !logoImageReady ? "mix" : style;
 
     for (let ry = 0; ry < rows; ry++) {
       for (let cx = 0; cx < cols; cx++) {
@@ -663,8 +735,8 @@ console.log("SMV build v27 loaded");
         const x = gap + cx * (tileW + gap);
         const y = gap + ry * (tileH + gap);
 
-        const pulse = 0.76 + beat * 0.44 + v * 0.32;
-        const s = pulse * vizControls.amplitude;
+        const pulse = 0.38 + beat * 0.20 + v * 0.16;
+        const s = pulse * (0.62 + vizControls.amplitude * 0.72);
         const cxm = x + tileW * 0.5;
         const cym = y + tileH * 0.5;
 
@@ -676,8 +748,10 @@ console.log("SMV build v27 loaded");
         const tSpeed = ph * (0.8 + vizControls.period * 0.75) + cx * 0.49 - ry * 0.37;
         const localHue = baseHue + idx01 * 88 + Math.sin(tSpeed + idx01 * 8) * 24;
 
-        const useCrest = style === "crest" || (style === "mix" && ((cx + ry) % 2 === 0));
-        if (useCrest) drawPowerVizCrestLogo(left, top, drawW, drawH, localHue, v, tSpeed);
+        const useUploaded = effectiveStyle === "uploaded";
+        const useCrest = effectiveStyle === "crest" || (effectiveStyle === "mix" && ((cx + ry) % 2 === 0));
+        if (useUploaded) drawUploadedLogoTile(left, top, drawW, drawH, localHue, v, tSpeed);
+        else if (useCrest) drawPowerVizCrestLogo(left, top, drawW, drawH, localHue, v, tSpeed);
         else drawSMVSquareLogo(left, top, drawW, drawH, localHue, v, tSpeed);
       }
     }
