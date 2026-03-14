@@ -15,6 +15,7 @@ console.log("SMV build v27 loaded");
   const audioEl = $("#audio");
   const layersEl = $("#layers");
   const vizMethodEl = $("#vizMethod");
+  const logoStyleEl = $("#logoStyle");
 
   const uiParams = {
     hueShift: $("#hueShift"),
@@ -524,6 +525,111 @@ console.log("SMV build v27 loaded");
   }
 
 
+  function drawSMVSquareLogo(left, top, drawW, drawH, localHue, v, tSpeed) {
+    const radius = Math.max(10, Math.min(drawW, drawH) * 0.12);
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(left + radius, top);
+    ctx.lineTo(left + drawW - radius, top);
+    ctx.quadraticCurveTo(left + drawW, top, left + drawW, top + radius);
+    ctx.lineTo(left + drawW, top + drawH - radius);
+    ctx.quadraticCurveTo(left + drawW, top + drawH, left + drawW - radius, top + drawH);
+    ctx.lineTo(left + radius, top + drawH);
+    ctx.quadraticCurveTo(left, top + drawH, left, top + drawH - radius);
+    ctx.lineTo(left, top + radius);
+    ctx.quadraticCurveTo(left, top, left + radius, top);
+    ctx.closePath();
+    ctx.clip();
+
+    ctx.fillStyle = "rgba(0,0,0,0.90)";
+    ctx.fillRect(left, top, drawW, drawH);
+
+    const grad = ctx.createLinearGradient(left, top, left + drawW, top + drawH);
+    grad.addColorStop(0, `hsla(${localHue.toFixed(1)}, 100%, 46%, ${(0.22 + v * 0.24).toFixed(3)})`);
+    grad.addColorStop(0.55, `hsla(${(localHue + 58).toFixed(1)}, 100%, 58%, ${(0.24 + v * 0.28).toFixed(3)})`);
+    grad.addColorStop(1, `hsla(${(localHue + 132).toFixed(1)}, 100%, 50%, ${(0.22 + v * 0.24).toFixed(3)})`);
+
+    const flowX = Math.sin(tSpeed) * drawW * 0.26;
+    const flowY = Math.cos(tSpeed * 0.8) * drawH * 0.22;
+    ctx.fillStyle = grad;
+    ctx.fillRect(left + flowX, top + flowY, drawW, drawH);
+    ctx.fillRect(left - flowX * 0.6, top - flowY * 0.6, drawW, drawH);
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `900 ${(drawW * 0.47).toFixed(1)}px Arial Black, Arial, sans-serif`;
+    ctx.fillStyle = "rgba(255,255,255,0.96)";
+    ctx.fillText("SMV", left + drawW * 0.5, top + drawH * 0.46);
+
+    ctx.font = `800 ${(drawW * 0.10).toFixed(1)}px Arial, sans-serif`;
+    ctx.fillStyle = "rgba(250,250,255,0.92)";
+    ctx.fillText("SHORT MUSIC VIDEOS", left + drawW * 0.5, top + drawH * 0.79);
+
+    ctx.lineWidth = 1.8 + v * 2.2;
+    ctx.strokeStyle = `hsla(${(localHue + 165).toFixed(1)}, 100%, 74%, ${(0.30 + v * 0.34).toFixed(3)})`;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawPowerVizCrestLogo(left, top, drawW, drawH, localHue, v, tSpeed) {
+    const cx = left + drawW * 0.5;
+    const cy = top + drawH * 0.52;
+    const r = Math.min(drawW, drawH) * 0.42;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, drawW * 0.48, drawH * 0.45, 0, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = "rgba(0,0,0,0.88)";
+    ctx.fillRect(left, top, drawW, drawH);
+
+    const ring = ctx.createRadialGradient(cx, cy, r * 0.18, cx, cy, r * 1.1);
+    ring.addColorStop(0, `hsla(${(localHue + 20).toFixed(1)}, 100%, 60%, ${(0.26 + v * 0.18).toFixed(3)})`);
+    ring.addColorStop(0.7, `hsla(${(localHue + 92).toFixed(1)}, 100%, 52%, ${(0.24 + v * 0.20).toFixed(3)})`);
+    ring.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = ring;
+    ctx.fillRect(left, top, drawW, drawH);
+
+    ctx.strokeStyle = "rgba(255,255,255,0.92)";
+    ctx.lineWidth = Math.max(2.4, r * 0.1);
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r * 1.05, r * 0.86, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.lineWidth = Math.max(1.6, r * 0.05);
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r * 0.82, r * 0.67, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(255,255,255,0.96)";
+    ctx.font = `900 ${(r * 0.46).toFixed(1)}px Arial Black, Arial, sans-serif`;
+    ctx.fillText("SMV", cx, cy - r * 0.30);
+
+    ctx.font = `900 ${(r * 0.55).toFixed(1)}px Arial Black, Arial, sans-serif`;
+    ctx.fillText("POWER", cx, cy - r * 0.01);
+    ctx.fillText("VIZ", cx, cy + r * 0.36);
+
+    // audio wave stripe
+    ctx.lineWidth = Math.max(1.6, r * 0.04);
+    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+    ctx.beginPath();
+    const n = 44;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const x = cx - r * 0.9 + t * r * 1.8;
+      const y = cy + r * 0.64 + Math.sin(t * 26 + tSpeed * 3.2) * r * (0.06 + v * 0.08);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    ctx.lineWidth = 1.4 + v * 1.6;
+    ctx.strokeStyle = `hsla(${(localHue + 175).toFixed(1)}, 100%, 74%, ${(0.30 + v * 0.30).toFixed(3)})`;
+    ctx.strokeRect(left + 2, top + 2, drawW - 4, drawH - 4);
+    ctx.restore();
+  }
+
   function drawLogoWall(w, h, spec) {
     ctx.globalCompositeOperation = "lighter";
 
@@ -536,8 +642,8 @@ console.log("SMV build v27 loaded");
     for (let i = 0; i < bassBins; i++) bassSum += spec[i] || 0;
     const bass = bassSum / (bassBins * 255);
 
-    const beat = Math.min(1.55, 0.62 + bass * 1.25 * vizControls.excitement);
-    const cell = Math.max(80, Math.min(240, 150 / vizControls.shapeBand));
+    const beat = Math.min(1.6, 0.66 + bass * 1.45 * vizControls.excitement);
+    const cell = Math.max(96, Math.min(260, 165 / vizControls.shapeBand));
     const gap = Math.max(6, 18 - vizControls.excitement * 4);
 
     const cols = Math.max(2, Math.ceil((w + gap) / (cell + gap)));
@@ -546,7 +652,7 @@ console.log("SMV build v27 loaded");
     const tileH = (h - gap * (rows + 1)) / rows;
 
     const baseHue = 205 + vizControls.hueShift;
-    const tSpeed = ph * (0.9 + vizControls.period * 0.7);
+    const style = logoStyleEl?.value || "mix";
 
     for (let ry = 0; ry < rows; ry++) {
       for (let cx = 0; cx < cols; cx++) {
@@ -557,7 +663,7 @@ console.log("SMV build v27 loaded");
         const x = gap + cx * (tileW + gap);
         const y = gap + ry * (tileH + gap);
 
-        const pulse = 0.75 + beat * 0.42 + v * 0.34;
+        const pulse = 0.76 + beat * 0.44 + v * 0.32;
         const s = pulse * vizControls.amplitude;
         const cxm = x + tileW * 0.5;
         const cym = y + tileH * 0.5;
@@ -567,58 +673,18 @@ console.log("SMV build v27 loaded");
         const left = cxm - drawW * 0.5;
         const top = cym - drawH * 0.5;
 
-        const radius = Math.max(8, Math.min(drawW, drawH) * 0.12);
-        const localHue = baseHue + idx01 * 90 + Math.sin(tSpeed + idx01 * 8) * 26;
+        const tSpeed = ph * (0.8 + vizControls.period * 0.75) + cx * 0.49 - ry * 0.37;
+        const localHue = baseHue + idx01 * 88 + Math.sin(tSpeed + idx01 * 8) * 24;
 
-        const grad = ctx.createLinearGradient(left, top, left + drawW, top + drawH);
-        grad.addColorStop(0, `hsla(${localHue.toFixed(1)}, 98%, ${(42 + loudness * 18).toFixed(1)}%, ${(0.20 + loudness * 0.20).toFixed(3)})`);
-        grad.addColorStop(0.5, `hsla(${(localHue + 42).toFixed(1)}, 96%, ${(56 + bass * 20).toFixed(1)}%, ${(0.25 + v * 0.28).toFixed(3)})`);
-        grad.addColorStop(1, `hsla(${(localHue + 108).toFixed(1)}, 96%, ${(44 + loudness * 16).toFixed(1)}%, ${(0.22 + v * 0.22).toFixed(3)})`);
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(left + radius, top);
-        ctx.lineTo(left + drawW - radius, top);
-        ctx.quadraticCurveTo(left + drawW, top, left + drawW, top + radius);
-        ctx.lineTo(left + drawW, top + drawH - radius);
-        ctx.quadraticCurveTo(left + drawW, top + drawH, left + drawW - radius, top + drawH);
-        ctx.lineTo(left + radius, top + drawH);
-        ctx.quadraticCurveTo(left, top + drawH, left, top + drawH - radius);
-        ctx.lineTo(left, top + radius);
-        ctx.quadraticCurveTo(left, top, left + radius, top);
-        ctx.closePath();
-        ctx.clip();
-
-        ctx.fillStyle = "rgba(0,0,0,0.82)";
-        ctx.fillRect(left, top, drawW, drawH);
-
-        const flowX = Math.sin(tSpeed + cx * 0.55 - ry * 0.41) * drawW * 0.32;
-        const flowY = Math.cos(tSpeed * 0.8 + ry * 0.44) * drawH * 0.28;
-        ctx.fillStyle = grad;
-        ctx.fillRect(left + flowX, top + flowY, drawW, drawH);
-        ctx.fillRect(left - flowX * 0.5, top - flowY * 0.5, drawW, drawH);
-
-        const smvSize = drawW * 0.46;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.font = `900 ${smvSize.toFixed(1)}px Arial, sans-serif`;
-        ctx.fillStyle = "rgba(250,252,255,0.94)";
-        ctx.fillText("SMV", left + drawW * 0.5, top + drawH * 0.47);
-
-        const tagSize = Math.max(8, drawW * 0.10);
-        ctx.font = `700 ${tagSize.toFixed(1)}px Arial, sans-serif`;
-        ctx.fillStyle = "rgba(245,248,255,0.9)";
-        ctx.fillText("POWER VIZ", left + drawW * 0.5, top + drawH * 0.78);
-
-        ctx.lineWidth = 1.6 + v * 1.8;
-        ctx.strokeStyle = `hsla(${(localHue + 120).toFixed(1)}, 98%, 72%, ${(0.34 + v * 0.32).toFixed(3)})`;
-        ctx.stroke();
-        ctx.restore();
+        const useCrest = style === "crest" || (style === "mix" && ((cx + ry) % 2 === 0));
+        if (useCrest) drawPowerVizCrestLogo(left, top, drawW, drawH, localHue, v, tSpeed);
+        else drawSMVSquareLogo(left, top, drawW, drawH, localHue, v, tSpeed);
       }
     }
 
     ctx.globalCompositeOperation = "source-over";
   }
+
 
   syncLayerButtons();
   setVizMethod(vizMethodEl?.value || "custom");
