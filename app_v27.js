@@ -172,7 +172,8 @@ console.log("SMV build v27 loaded");
     "2": "blocks",
     "3": "radiate",
     "4": "flow",
-    "5": "orbit"
+    "5": "orbit",
+    "6": "cymatic"
   };
   window.addEventListener("keydown", (e) => {
     if (!keyMap[e.key]) return;
@@ -364,6 +365,83 @@ console.log("SMV build v27 loaded");
     ctx.globalCompositeOperation = "source-over";
   }
 
+
+
+  function drawCymatic(w, h, spec) {
+    ctx.globalCompositeOperation = "lighter";
+
+    const cx = w * 0.5;
+    const cy = h * 0.5;
+    const minDim = Math.min(w, h);
+
+    let energySum = 0;
+    for (let i = 0; i < spec.length; i++) energySum += spec[i];
+    const loudness = energySum / (spec.length * 255);
+
+    const low = (spec[12] || 0) / 255;
+    const lowMid = (spec[64] || 0) / 255;
+    const high = (spec[300] || 0) / 255;
+
+    const modeA = 2 + Math.floor(low * 8);
+    const modeB = 3 + Math.floor(lowMid * 11);
+    const modeC = 5 + Math.floor(high * 14);
+
+    const points = 720;
+    const rings = 7;
+
+    for (let r = 0; r < rings; r++) {
+      const rt = r / (rings - 1);
+      const baseRadius = minDim * (0.10 + rt * 0.34);
+      const harmonicMix = 0.34 + rt * 0.66;
+      const lineAlpha = 0.06 + loudness * 0.23 + rt * 0.05;
+      const hue = 190 + loudness * 120 + rt * 36;
+
+      ctx.beginPath();
+      for (let i = 0; i <= points; i++) {
+        const t = i / points;
+        const a = t * Math.PI * 2;
+
+        const radialWave =
+          Math.sin(a * modeA + ph * 1.25) * 0.30 +
+          Math.sin(a * modeB - ph * 0.8) * 0.22 +
+          Math.sin(a * modeC + ph * 0.45) * 0.16;
+
+        const contour =
+          1 +
+          radialWave * harmonicMix +
+          Math.sin(a * (modeB + modeA * 0.5) + ph * 0.6) * 0.08 * (0.4 + loudness);
+
+        const radialScale = 1 + (loudness - 0.5) * 0.35;
+        const rr = baseRadius * contour * radialScale;
+        const x = cx + Math.cos(a) * rr;
+        const y = cy + Math.sin(a) * rr;
+
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+
+      ctx.closePath();
+      ctx.lineWidth = 1.2 + rt * 1.6 + loudness * 1.2;
+      ctx.strokeStyle = `hsla(${hue.toFixed(1)}, 95%, ${(48 + loudness * 20).toFixed(1)}%, ${lineAlpha.toFixed(3)})`;
+      ctx.stroke();
+    }
+
+    const grain = 420;
+    for (let i = 0; i < grain; i++) {
+      const t = i / grain;
+      const a = t * Math.PI * 2 + ph * 0.2;
+      const mod = Math.abs(Math.sin(a * modeA) * Math.cos(a * modeC));
+      const rr = minDim * (0.09 + mod * (0.12 + loudness * 0.35));
+      const x = cx + Math.cos(a * (1 + lowMid * 0.8)) * rr;
+      const y = cy + Math.sin(a * (1 + high * 1.0)) * rr;
+      const glow = 0.04 + mod * (0.16 + loudness * 0.24);
+      ctx.fillStyle = `hsla(${(220 + loudness * 80).toFixed(1)}, 100%, ${(55 + high * 30).toFixed(1)}%, ${glow.toFixed(3)})`;
+      ctx.fillRect(x, y, 1.8, 1.8);
+    }
+
+    ctx.globalCompositeOperation = "source-over";
+  }
+
   // ---------- render loop ----------
   function tick() {
     ph += 0.010;
@@ -378,6 +456,7 @@ console.log("SMV build v27 loaded");
     if (overlays.has("radiate")) drawRadiate(w, h, spec);
     if (overlays.has("flow")) drawFlow(w, h, spec);
     if (overlays.has("orbit")) drawOrbit(w, h, spec);
+    if (overlays.has("cymatic")) drawCymatic(w, h, spec);
     if (overlays.has("wave")) drawWave(w, h, spec);
 
     requestAnimationFrame(tick);
