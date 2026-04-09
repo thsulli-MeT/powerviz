@@ -253,6 +253,9 @@ console.log("SMV build v27 loaded");
     if (method === "cymatic") {
       overlays.add("cymatic");
       overlays.add("wave");
+    } else if (method === "serpent") {
+      overlays.add("serpent");
+      overlays.add("wave");
     } else if (method === "orbital") {
       overlays.add("orbit");
       overlays.add("flow");
@@ -260,7 +263,7 @@ console.log("SMV build v27 loaded");
       overlays.add("blocks");
       overlays.add("wave");
     } else if (method === "full") {
-      ["wave", "blocks", "radiate", "flow", "orbit", "cymatic", "logos"].forEach((k) => overlays.add(k));
+      ["wave", "blocks", "radiate", "flow", "orbit", "cymatic", "serpent", "logos"].forEach((k) => overlays.add(k));
     } else if (method === "logos") {
       overlays.add("logos");
     }
@@ -271,7 +274,7 @@ console.log("SMV build v27 loaded");
     setVizMethod(vizMethodEl.value);
   });
 
-  // Keyboard shortcuts 1-7 toggle layers
+  // Keyboard shortcuts 1-8 toggle layers
   const keyMap = {
     "1": "wave",
     "2": "blocks",
@@ -279,7 +282,8 @@ console.log("SMV build v27 loaded");
     "4": "flow",
     "5": "orbit",
     "6": "cymatic",
-    "7": "logos"
+    "7": "serpent",
+    "8": "logos"
   };
   window.addEventListener("keydown", (e) => {
     if (!keyMap[e.key]) return;
@@ -478,6 +482,61 @@ console.log("SMV build v27 loaded");
     ctx.globalCompositeOperation = "source-over";
   }
 
+
+
+  function drawSerpent(w, h, spec) {
+    ctx.globalCompositeOperation = "lighter";
+
+    let bassSum = 0;
+    const bassBins = 80;
+    for (let i = 0; i < bassBins; i++) bassSum += spec[i] || 0;
+    const bass = bassSum / (bassBins * 255);
+
+    const ribbons = Math.floor(8 + 10 * Math.min(1.6, vizControls.excitement));
+    const segments = 42;
+    const laneW = w / Math.max(1, ribbons - 1);
+    const swayBase = w * (0.03 + vizControls.shapeBand * 0.022);
+    const climb = h * (0.74 + bass * 0.26) * vizControls.amplitude;
+
+    for (let r = 0; r < ribbons; r++) {
+      const tR = ribbons <= 1 ? 0 : r / (ribbons - 1);
+      const idx = Math.floor(Math.pow(tR, 1.9) * (spec.length - 1));
+      const v = (spec[idx] || 0) / 255;
+      const beat = Math.min(1.6, v * 1.45 + bass * 0.95);
+      const baseX = laneW * r;
+      const phase = ph * (1.4 + vizControls.period * 0.6) + r * 0.52;
+
+      ctx.beginPath();
+      for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        const y = h - t * climb;
+        const undA = Math.sin(phase + t * (8.5 + beat * 4.6)) * swayBase * (0.34 + beat * 0.5);
+        const undB = Math.sin(phase * 0.7 - t * 15.2 + r) * swayBase * (0.15 + vizControls.excitement * 0.23);
+        const x = baseX + undA + undB + Math.sin(ph * 2.2 + t * 32 + r) * (8 + beat * 20);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+
+      const hue = 170 + vizControls.hueShift + tR * 210 + Math.sin(phase) * 22;
+      const alpha = 0.10 + 0.26 * beat;
+      ctx.lineWidth = 2.0 + beat * 8.0;
+      ctx.strokeStyle = `hsla(${hue.toFixed(1)}, 98%, ${(52 + beat * 17).toFixed(1)}%, ${Math.min(0.76, alpha).toFixed(3)})`;
+      ctx.stroke();
+
+      const glowR = 12 + beat * 34;
+      const gy = h - climb * (0.55 + v * 0.18);
+      const gx = baseX + Math.sin(phase * 1.2) * swayBase * 0.65;
+      const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, glowR);
+      g.addColorStop(0, `hsla(${(hue + 42).toFixed(1)}, 100%, 68%, ${(0.25 + beat * 0.22).toFixed(3)})`);
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(gx, gy, glowR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.globalCompositeOperation = "source-over";
+  }
 
 
   function drawCymatic(w, h, spec) {
@@ -817,6 +876,7 @@ console.log("SMV build v27 loaded");
     if (overlays.has("flow")) drawFlow(w, h, spec);
     if (overlays.has("orbit")) drawOrbit(w, h, spec);
     if (overlays.has("cymatic")) drawCymatic(w, h, spec);
+    if (overlays.has("serpent")) drawSerpent(w, h, spec);
     if (overlays.has("logos")) drawLogoWall(w, h, spec);
     if (overlays.has("wave")) drawWave(w, h, spec);
 
